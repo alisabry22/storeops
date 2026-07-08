@@ -6,6 +6,12 @@ import { useParams, useRouter } from "next/navigation";
 import { useCredentials } from "@/lib/store";
 import { AscError, ascFetch, ascFetchAllFull } from "@/lib/asc/client";
 import { AppTabs } from "@/components/AppTabs";
+import {
+  buildAiPrompt,
+  buildCsv,
+  parsePriceSheet,
+  snapToPricePoint,
+} from "@/lib/pricing-import";
 import type {
   AppPrice,
   AppPricePoint,
@@ -21,6 +27,19 @@ interface PreviewRow {
   pointId: string;
   overridden: boolean;
 }
+
+interface ImportRow {
+  territoryId: string;
+  currency: string;
+  currentPrice: string | null;
+  requested: number;
+  snappedPrice: string;
+  pointId: string;
+  note: string | null;
+}
+
+// Price points rarely change — cache per app+territory for the session.
+const pricePointCache = new Map<string, AppPricePoint[]>();
 
 function formatPrice(price: string, currency: string): string {
   const n = Number(price);
@@ -59,6 +78,7 @@ function resolvePriceRows(
       currency: territory?.attributes.currency ?? "",
       customerPrice: point.attributes.customerPrice,
       manual,
+      pricePointId: point.id,
     });
   }
   return rows;
@@ -91,7 +111,33 @@ export default function PricingPage() {
   const [applying, setApplying] = useState(false);
   const [applied, setApplied] = useState(false);
 
+  // Sheet import flow
+  const [territoriesMap, setTerritoriesMap] = useState<Map<string, string>>(
+    new Map()
+  );
+  const [sheetText, setSheetText] = useState("");
+  const [importWarnings, setImportWarnings] = useState<string[]>([]);
+  const [importPreview, setImportPreview] = useState<ImportRow[] | null>(null);
+  const [importProgress, setImportProgress] = useState<{
+    done: number;
+    total: number;
+  } | null>(null);
+  const [keepExistingManual, setKeepExistingManual] = useState(true);
+  const [copiedPrompt, setCopiedPrompt] = useState(false);
+
   useEffect(() => setHydrated(true), []);
+
+  // All valid territories + currencies (one cheap fetch, used for validation)
+  useEffect(() => {
+    if (!credentials || !hydrated) return;
+    ascFetchAllFull<Territory>(credentials, "/v1/territories")
+      .then(({ data }) =>
+        setTerritoriesMap(
+          new Map(data.map((t) => [t.id, t.attributes.currency]))
+        )
+      )
+      .catch(() => {});
+  }, [credentials, hydrated]);
 
   const loadCurrent = useCallback(async () => {
     if (!credentials) return;
@@ -286,6 +332,41 @@ export default function PricingPage() {
     setOverrideOpen(null);
   }
 
+  /** POST a full replacement price schedule. `manual[0]` must be the base territory's price. */
+  async function postSchedule(manual: Array<{ pointId: string }>) {
+    if (!credentials) return;
+    await ascFetch(credentials, `/v1/appPriceSchedules`, {
+      method: "POST",
+      body: {
+        data: {
+          type: "appPriceSchedules",
+          relationships: {
+            app: { data: { type: "apps", id } },
+            baseTerritory: {
+              data: { type: "territories", id: baseTerritory },
+            },
+            manualPrices: {
+              data: manual.map((_, i) => ({
+                type: "appPrices",
+                id: `\${price-${i}}`,
+              })),
+            },
+          },
+        },
+        included: manual.map((r, i) => ({
+          id: `\${price-${i}}`,
+          type: "appPrices",
+          attributes: { startDate: null },
+          relationships: {
+            appPricePoint: {
+              data: { type: "appPricePoints", id: r.pointId },
+            },
+          },
+        })),
+      },
+    });
+  }
+
   async function applySchedule() {
     if (!credentials || !preview) return;
     const overrides = preview.filter((r) => r.overridden);
@@ -297,37 +378,10 @@ export default function PricingPage() {
     setApplying(true);
     setError("");
     try {
-      const manual = [base, ...overrides.filter((r) => r.territoryId !== baseTerritory)];
-      await ascFetch(credentials, `/v1/appPriceSchedules`, {
-        method: "POST",
-        body: {
-          data: {
-            type: "appPriceSchedules",
-            relationships: {
-              app: { data: { type: "apps", id } },
-              baseTerritory: {
-                data: { type: "territories", id: baseTerritory },
-              },
-              manualPrices: {
-                data: manual.map((_, i) => ({
-                  type: "appPrices",
-                  id: `\${price-${i}}`,
-                })),
-              },
-            },
-          },
-          included: manual.map((r, i) => ({
-            id: `\${price-${i}}`,
-            type: "appPrices",
-            attributes: { startDate: null },
-            relationships: {
-              appPricePoint: {
-                data: { type: "appPricePoints", id: r.pointId },
-              },
-            },
-          })),
-        },
-      });
+      await postSchedule([
+        base,
+        ...overrides.filter((r) => r.territoryId !== baseTerritory),
+      ]);
       setApplied(true);
       setPreview(null);
       setSelectedPointId("");
@@ -338,6 +392,153 @@ export default function PricingPage() {
     } finally {
       setApplying(false);
     }
+  }
+
+  async function getPointsForTerritory(
+    territoryId: string
+  ): Promise<AppPricePoint[]> {
+    const key = `${id}:${territoryId}`;
+    const cached = pricePointCache.get(key);
+    if (cached) return cached;
+    const { data } = await ascFetchAllFull<AppPricePoint>(
+      credentials!,
+      `/v1/apps/${id}/appPricePoints`,
+      { "filter[territory]": territoryId }
+    );
+    pricePointCache.set(key, data);
+    return data;
+  }
+
+  async function buildImportPreview() {
+    if (!credentials || !sheetText.trim()) return;
+    setError("");
+    setApplied(false);
+    setImportPreview(null);
+
+    const { rows, warnings } = parsePriceSheet(sheetText);
+    const allWarnings = [...warnings];
+
+    const valid = rows.filter((r) => {
+      if (territoriesMap.size > 0 && !territoriesMap.has(r.territoryId)) {
+        allWarnings.push(
+          `${r.territoryId}: not an App Store territory — skipped`
+        );
+        return false;
+      }
+      return true;
+    });
+
+    setImportWarnings(allWarnings);
+    if (valid.length === 0) {
+      setError("No usable rows found. Expected CSV: territory,price (3-letter codes like USA, EGY).");
+      return;
+    }
+
+    setImportProgress({ done: 0, total: valid.length });
+    let done = 0;
+    try {
+      const resolved = await Promise.all(
+        valid.map(async (row) => {
+          const points = await getPointsForTerritory(row.territoryId);
+          done++;
+          setImportProgress({ done, total: valid.length });
+          const point = snapToPricePoint(points, row.price);
+          if (!point) {
+            allWarnings.push(
+              `${row.territoryId}: no price points available — skipped`
+            );
+            return null;
+          }
+          const snapped = point.attributes.customerPrice;
+          const wasSnapped = Number(snapped) !== row.price;
+          return {
+            territoryId: row.territoryId,
+            currency: territoriesMap.get(row.territoryId) ?? "",
+            currentPrice:
+              currentByTerritory.get(row.territoryId)?.customerPrice ?? null,
+            requested: row.price,
+            snappedPrice: snapped,
+            pointId: point.id,
+            note: wasSnapped ? `snapped from ${row.price}` : null,
+          } satisfies ImportRow;
+        })
+      );
+      setImportPreview(
+        resolved
+          .filter((r): r is ImportRow => r !== null)
+          .sort((a, b) => a.territoryId.localeCompare(b.territoryId))
+      );
+      setImportWarnings([...allWarnings]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setImportProgress(null);
+    }
+  }
+
+  async function applyImport() {
+    if (!credentials || !importPreview) return;
+    setApplying(true);
+    setError("");
+    try {
+      const inSheet = new Map(importPreview.map((r) => [r.territoryId, r]));
+
+      // Base territory price is required: from the sheet, or current schedule
+      let basePointId = inSheet.get(baseTerritory)?.pointId;
+      if (!basePointId) {
+        basePointId = currentByTerritory.get(baseTerritory)?.pricePointId;
+      }
+      if (!basePointId) {
+        setError(
+          `Include your base territory (${baseTerritory}) in the sheet — there's no current base price to keep.`
+        );
+        setApplying(false);
+        return;
+      }
+
+      const manual: Array<{ pointId: string }> = [{ pointId: basePointId }];
+      for (const row of importPreview) {
+        if (row.territoryId === baseTerritory) continue;
+        manual.push({ pointId: row.pointId });
+      }
+      // Preserve manual prices Apple already has that the sheet doesn't touch
+      if (keepExistingManual) {
+        for (const row of currentPrices) {
+          if (!row.manual) continue;
+          if (row.territoryId === baseTerritory) continue;
+          if (inSheet.has(row.territoryId)) continue;
+          manual.push({ pointId: row.pricePointId });
+        }
+      }
+
+      await postSchedule(manual);
+      setApplied(true);
+      setImportPreview(null);
+      setSheetText("");
+      setNoSchedule(false);
+      await loadCurrent();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setApplying(false);
+    }
+  }
+
+  function exportCsv() {
+    const csv = buildCsv(currentPrices);
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `prices-${id}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function copyAiPrompt() {
+    await navigator.clipboard.writeText(buildAiPrompt(buildCsv(currentPrices)));
+    setCopiedPrompt(true);
+    setTimeout(() => setCopiedPrompt(false), 2000);
   }
 
   const filteredPrices = useMemo(() => {
@@ -380,6 +581,156 @@ export default function PricingPage() {
           ✓ Price schedule applied. That just saved you ~30 minutes of clicking.
         </p>
       )}
+
+      {/* ---- Sheet import flow ---- */}
+      <div className="rounded-xl border border-emerald-900/60 bg-zinc-900/60 p-5 mb-6">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+          <h2 className="font-semibold">
+            Import price sheet{" "}
+            <span className="text-zinc-500 font-normal text-sm">
+              CSV from any AI or spreadsheet
+            </span>
+          </h2>
+          <div className="flex gap-2">
+            <button
+              onClick={exportCsv}
+              disabled={currentPrices.length === 0}
+              className="text-xs rounded-md border border-zinc-700 px-3 py-1.5 text-zinc-300 hover:border-zinc-500 disabled:opacity-40 transition"
+            >
+              ↓ Export current CSV
+            </button>
+            <button
+              onClick={copyAiPrompt}
+              disabled={currentPrices.length === 0}
+              className="text-xs rounded-md border border-emerald-800 px-3 py-1.5 text-emerald-400 hover:border-emerald-600 disabled:opacity-40 transition"
+            >
+              {copiedPrompt ? "Copied ✓" : "⧉ Copy AI prompt + my prices"}
+            </button>
+          </div>
+        </div>
+        <p className="text-sm text-zinc-400 mb-3">
+          The loop: export → ask ChatGPT/Claude to reprice (PPP, sales,
+          rounding — your call) → paste the CSV back here. We snap every price
+          to the nearest valid Apple price point and show you the diff first.
+        </p>
+        <textarea
+          value={sheetText}
+          onChange={(e) => {
+            setSheetText(e.target.value);
+            setImportPreview(null);
+          }}
+          placeholder={"territory,price\nUSA,4.99\nEGY,49.99\nDEU,3.99"}
+          rows={4}
+          className="w-full rounded-md bg-zinc-950 border border-zinc-800 px-3 py-2 text-sm font-mono focus:border-emerald-500 focus:outline-none resize-y"
+        />
+        <div className="flex flex-wrap items-center gap-3 mt-3">
+          <label className="text-xs text-zinc-400 flex items-center gap-1.5">
+            <input
+              type="file"
+              accept=".csv,.tsv,.txt"
+              className="hidden"
+              id="csv-file"
+              onChange={async (e) => {
+                const f = e.target.files?.[0];
+                if (f) {
+                  setSheetText(await f.text());
+                  setImportPreview(null);
+                }
+              }}
+            />
+            <button
+              onClick={() => document.getElementById("csv-file")?.click()}
+              className="rounded-md border border-zinc-700 px-3 py-1.5 text-zinc-300 hover:border-zinc-500 transition"
+            >
+              Upload .csv
+            </button>
+          </label>
+          <button
+            onClick={buildImportPreview}
+            disabled={!sheetText.trim() || importProgress !== null}
+            className="rounded-md bg-zinc-100 text-zinc-950 px-4 py-2 text-sm font-semibold hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition"
+          >
+            {importProgress
+              ? `Validating ${importProgress.done}/${importProgress.total} territories…`
+              : "Preview import"}
+          </button>
+          {importPreview && (
+            <>
+              <label className="flex items-center gap-1.5 text-xs text-zinc-400">
+                <input
+                  type="checkbox"
+                  checked={keepExistingManual}
+                  onChange={(e) => setKeepExistingManual(e.target.checked)}
+                  className="accent-emerald-500"
+                />
+                Keep existing manual prices not in the sheet
+              </label>
+              <button
+                onClick={applyImport}
+                disabled={applying}
+                className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 disabled:opacity-40 transition"
+              >
+                {applying
+                  ? "Applying…"
+                  : `Apply ${importPreview.length} prices`}
+              </button>
+            </>
+          )}
+        </div>
+
+        {importWarnings.length > 0 && (
+          <div className="mt-3 rounded-md border border-amber-900 bg-amber-950/30 px-3 py-2 text-xs text-amber-400 space-y-0.5 max-h-24 overflow-y-auto">
+            {importWarnings.map((w, i) => (
+              <div key={i}>{w}</div>
+            ))}
+          </div>
+        )}
+
+        {importPreview && (
+          <div className="mt-3 rounded-lg border border-zinc-800 overflow-hidden">
+            <div className="max-h-72 overflow-y-auto">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-zinc-900">
+                  <tr className="text-left text-zinc-400">
+                    <th className="px-4 py-2 font-medium">Territory</th>
+                    <th className="px-4 py-2 font-medium">Current</th>
+                    <th className="px-4 py-2 font-medium">Sheet says</th>
+                    <th className="px-4 py-2 font-medium">Will set</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {importPreview.map((r) => (
+                    <tr key={r.territoryId} className="border-t border-zinc-800/60">
+                      <td className="px-4 py-2 font-mono text-zinc-300">
+                        {r.territoryId}
+                        {r.territoryId === baseTerritory && (
+                          <span className="ml-2 text-xs text-emerald-400">base</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-zinc-500 font-mono">
+                        {r.currentPrice !== null
+                          ? formatPrice(r.currentPrice, r.currency)
+                          : "—"}
+                      </td>
+                      <td className="px-4 py-2 text-zinc-500 font-mono">
+                        {r.requested}
+                      </td>
+                      <td className="px-4 py-2 font-mono">
+                        {formatPrice(r.snappedPrice, r.currency)}
+                        {r.note && (
+                          <span className="ml-2 text-xs text-amber-400">
+                            {r.note}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* ---- Change price flow ---- */}
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 mb-8">

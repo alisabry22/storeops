@@ -98,4 +98,5 @@ export interface PriceRow {
   currency: string;
   customerPrice: string;
   manual: boolean; // true = explicitly set, false = Apple-equalized
+  pricePointId: string;
 }

@@ -35,6 +35,8 @@ Then open http://localhost:3000 and connect with your App Store Connect API key
 - [x] Apps list
 - [x] Metadata bulk editor — description, keywords, promo text, What's New across all locales, "apply to all", char counters, per-locale save log
 - [x] Pricing matrix — set base price, preview all ~175 territories (dry run), override individual countries, one-click apply (`appPriceSchedules`)
+- [x] **AI pricing loop** — export current prices as CSV, copy a ready-made AI prompt with your data, paste the AI's repriced CSV back, prices snap to valid Apple price points, diff preview, one apply. Existing manual prices are preserved unless you say otherwise
+- [ ] MCP server — let AI agents drive StoreOps directly (list apps, read prices, apply sheets)
 - [ ] App name / subtitle editing (`appInfoLocalizations`)
 - [ ] Subscription pricing per territory (`subscriptionPrices`) with preserve-existing-subscribers handling
 - [ ] Scheduled price changes (startDate support)
