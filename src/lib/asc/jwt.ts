@@ -26,8 +26,7 @@ export async function getToken(creds: AscCredentials): Promise<string> {
     return cachedToken.token;
   }
 
-  const pem = normalizePem(creds.privateKeyPem);
-  const privateKey = await importPKCS8(pem, "ES256");
+  const privateKey = await importKey(creds.privateKeyPem);
 
   const token = await new SignJWT({})
     .setProtectedHeader({ alg: "ES256", kid: creds.keyId, typ: "JWT" })
@@ -49,11 +48,85 @@ export function clearTokenCache() {
   cachedToken = null;
 }
 
-/** Accepts raw base64 body or full PEM; returns a valid PEM string. */
-function normalizePem(input: string): string {
-  const trimmed = input.trim();
-  if (trimmed.includes("-----BEGIN")) return trimmed;
-  const body = trimmed.replace(/\s+/g, "");
-  const lines = body.match(/.{1,64}/g)?.join("\n") ?? body;
-  return `-----BEGIN PRIVATE KEY-----\n${lines}\n-----END PRIVATE KEY-----`;
+/**
+ * Import an EC P-256 private key from PEM (PKCS#8 or SEC1) or raw base64.
+ * Apple .p8 files are PKCS#8, but some tools/exports use SEC1 format.
+ * jose's importPKCS8 only accepts PKCS#8, so we handle SEC1 separately
+ * by going through WebCrypto's native PKCS#8 import after converting.
+ */
+async function importKey(input: string): Promise<CryptoKey> {
+  const cleaned = input.replace(/^\xEF\xBB\xBF/, "").replace(/\r\n/g, "\n").trim();
+
+  if (cleaned.startsWith("-----BEGIN EC PRIVATE KEY-----")) {
+    return importSec1Key(cleaned);
+  }
+
+  // PKCS#8 PEM or raw base64 → normalize to PEM and use jose
+  let pem = cleaned;
+  if (!pem.startsWith("-----BEGIN")) {
+    const body = pem.replace(/\s+/g, "");
+    const lines = body.match(/.{1,64}/g)?.join("\n") ?? body;
+    pem = `-----BEGIN PRIVATE KEY-----\n${lines}\n-----END PRIVATE KEY-----`;
+  }
+  return importPKCS8(pem, "ES256");
+}
+
+/**
+ * Import SEC1 EC key by converting to PKCS#8 DER and using WebCrypto directly.
+ * SEC1 (RFC 5915) → PKCS#8 (RFC 5958) wrapping for P-256.
+ */
+async function importSec1Key(sec1Pem: string): Promise<CryptoKey> {
+  const b64 = sec1Pem
+    .replace(/-----BEGIN EC PRIVATE KEY-----/, "")
+    .replace(/-----END EC PRIVATE KEY-----/, "")
+    .replace(/\s+/g, "");
+  const sec1Der = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+
+  // PKCS#8 = SEQUENCE { version, algorithmIdentifier, OCTET STRING { sec1Der } }
+  const algId = new Uint8Array([
+    0x30, 0x13, // SEQUENCE
+    0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01, // OID 1.2.840.10045.2.1 (ecPublicKey)
+    0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07, // OID 1.2.840.10045.3.1.7 (P-256)
+  ]);
+
+  const version = new Uint8Array([0x02, 0x01, 0x00]); // INTEGER 0
+
+  // Wrap SEC1 in OCTET STRING
+  const octetString = wrapAsn1(0x04, sec1Der);
+
+  // Wrap everything in outer SEQUENCE
+  const inner = concatBytes(version, algId, octetString);
+  const pkcs8Der = wrapAsn1(0x30, inner);
+
+  return crypto.subtle.importKey(
+    "pkcs8",
+    pkcs8Der.buffer as ArrayBuffer,
+    { name: "ECDSA", namedCurve: "P-256" },
+    false,
+    ["sign"]
+  );
+}
+
+function wrapAsn1(tag: number, content: Uint8Array): Uint8Array {
+  const len = content.length;
+  let header: Uint8Array;
+  if (len < 0x80) {
+    header = new Uint8Array([tag, len]);
+  } else if (len < 0x100) {
+    header = new Uint8Array([tag, 0x81, len]);
+  } else {
+    header = new Uint8Array([tag, 0x82, (len >> 8) & 0xff, len & 0xff]);
+  }
+  return concatBytes(header, content);
+}
+
+function concatBytes(...arrays: Uint8Array[]): Uint8Array {
+  const total = arrays.reduce((n, a) => n + a.length, 0);
+  const result = new Uint8Array(total);
+  let offset = 0;
+  for (const a of arrays) {
+    result.set(a, offset);
+    offset += a.length;
+  }
+  return result;
 }
