@@ -1,65 +1,139 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useCredentials } from "@/lib/store";
+import { ascFetch } from "@/lib/asc/client";
+
+export default function SetupPage() {
+  const router = useRouter();
+  const { credentials, setCredentials } = useCredentials();
+  const [issuerId, setIssuerId] = useState("");
+  const [keyId, setKeyId] = useState("");
+  const [privateKeyPem, setPrivateKeyPem] = useState("");
+  const [status, setStatus] = useState<"idle" | "testing" | "error">("idle");
+  const [error, setError] = useState("");
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (hydrated && credentials) router.replace("/apps");
+  }, [hydrated, credentials, router]);
+
+  async function handleKeyFile(file: File) {
+    setPrivateKeyPem(await file.text());
+  }
+
+  async function connect(e: React.FormEvent) {
+    e.preventDefault();
+    setStatus("testing");
+    setError("");
+    const creds = {
+      issuerId: issuerId.trim(),
+      keyId: keyId.trim(),
+      privateKeyPem,
+    };
+    try {
+      // Validate the credentials with a real API call before saving
+      await ascFetch(creds, "/v1/apps", { params: { limit: "1" } });
+      setCredentials(creds);
+      router.push("/apps");
+    } catch (err) {
+      setStatus("error");
+      setError(
+        err instanceof Error ? err.message : "Could not connect to Apple."
+      );
+    }
+  }
+
+  if (!hydrated) return null;
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+    <main className="max-w-lg mx-auto w-full px-6 py-16">
+      <div className="mb-10">
+        <h1 className="text-3xl font-bold tracking-tight">
+          Store<span className="text-emerald-400">Ops</span>
+        </h1>
+        <p className="mt-2 text-zinc-400">
+          Bulk-edit App Store metadata, pricing, and subscriptions across every
+          storefront. No more clicking through 50 locales.
+        </p>
+      </div>
+
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-6">
+        <h2 className="font-semibold mb-1">Connect App Store Connect</h2>
+        <p className="text-sm text-zinc-400 mb-5">
+          Your key is stored{" "}
+          <strong className="text-zinc-200">only in this browser</strong> and
+          used to sign 20-minute tokens locally. It never touches our servers.
+        </p>
+
+        <form onSubmit={connect} className="space-y-4">
+          <label className="block">
+            <span className="text-sm text-zinc-300">Issuer ID</span>
+            <input
+              value={issuerId}
+              onChange={(e) => setIssuerId(e.target.value)}
+              placeholder="69a6de70-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+              required
+              className="mt-1 w-full rounded-md bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm font-mono focus:border-emerald-500 focus:outline-none"
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+          </label>
+
+          <label className="block">
+            <span className="text-sm text-zinc-300">Key ID</span>
+            <input
+              value={keyId}
+              onChange={(e) => setKeyId(e.target.value)}
+              placeholder="2X9R4HXF34"
+              required
+              className="mt-1 w-full rounded-md bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm font-mono focus:border-emerald-500 focus:outline-none"
+            />
+          </label>
+
+          <label className="block">
+            <span className="text-sm text-zinc-300">
+              Private key (.p8 file)
+            </span>
+            <input
+              type="file"
+              accept=".p8,.pem"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleKeyFile(f);
+              }}
+              className="mt-1 block w-full text-sm text-zinc-400 file:mr-3 file:rounded-md file:border-0 file:bg-zinc-800 file:px-3 file:py-1.5 file:text-sm file:text-zinc-200 hover:file:bg-zinc-700"
+            />
+            {privateKeyPem && (
+              <span className="mt-1 block text-xs text-emerald-400">
+                Key loaded ✓
+              </span>
+            )}
+          </label>
+
+          <button
+            type="submit"
+            disabled={!privateKeyPem || status === "testing"}
+            className="w-full rounded-md bg-emerald-500 py-2.5 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed transition"
           >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+            {status === "testing" ? "Verifying with Apple…" : "Connect"}
+          </button>
+
+          {error && (
+            <p className="text-sm text-red-400 bg-red-950/40 border border-red-900 rounded-md px-3 py-2">
+              {error}
+            </p>
+          )}
+        </form>
+      </div>
+
+      <p className="mt-6 text-xs text-zinc-500 leading-relaxed">
+        Create a key in App Store Connect → Users and Access → Integrations →
+        App Store Connect API. Role: <strong>App Manager</strong> is enough.
+      </p>
+    </main>
   );
 }

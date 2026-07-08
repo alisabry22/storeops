@@ -1,36 +1,46 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# StoreOps
 
-## Getting Started
+**App Store Connect, without the clicking.**
 
-First, run the development server:
+Bulk-edit App Store metadata, pricing, and subscriptions across every storefront. Built for indie devs who ship to 50+ countries and are tired of the App Store Connect UI.
+
+## Why
+
+- Updating "What's New" in 40 locales takes an hour of clicking in ASC. Here it's one click.
+- Adjusting prices for some countries but not others is a spreadsheet-and-prayer workflow. Here it's a matrix.
+- Subscription pricing per territory is buried five screens deep. Here it's one table.
+
+## Security model (read this first)
+
+Your App Store Connect API key has write access to your whole account, so we designed around never having it:
+
+1. Your `.p8` private key is stored **only in your browser** (localStorage).
+2. JWTs are signed **locally in your browser** via WebCrypto (ES256), valid for 20 minutes max.
+3. Requests go through a thin same-origin proxy (`/api/asc/*`) that exists only because Apple blocks CORS. It forwards your short-lived token verbatim, stores nothing, logs nothing.
+4. The code is right here — audit it.
+
+## Getting started
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Then open http://localhost:3000 and connect with your App Store Connect API key
+(App Store Connect → Users and Access → Integrations → App Store Connect API — the **App Manager** role is enough).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Status / Roadmap
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- [x] Connect with ASC API key (browser-only key storage)
+- [x] Apps list
+- [x] Metadata bulk editor — description, keywords, promo text, What's New across all locales, "apply to all", char counters, per-locale save log
+- [ ] App name / subtitle editing (`appInfoLocalizations`)
+- [ ] Pricing matrix — per-territory custom pricing (`appPriceSchedules`)
+- [ ] Subscription pricing per territory (`subscriptionPrices`) with preserve-existing-subscribers handling
+- [ ] Dry-run preview before every write
+- [ ] Encrypt key at rest with a passphrase (AES-GCM)
+- [ ] CSV / spreadsheet import-export for translations
 
-## Learn More
+## Stack
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Next.js (App Router) · TypeScript · Tailwind · jose (JWT) · zustand
