@@ -72,3 +72,30 @@ export const APP_INFO_FIELDS = [
 
 export type VersionFieldKey = (typeof VERSION_FIELDS)[number]["key"];
 export type AppInfoFieldKey = (typeof APP_INFO_FIELDS)[number]["key"];
+
+// ---- Pricing ----
+export interface TerritoryAttributes {
+  currency: string;
+}
+export type Territory = AscResource<TerritoryAttributes>;
+
+export interface AppPricePointAttributes {
+  customerPrice: string; // e.g. "4.99"
+  proceeds: string;
+}
+export type AppPricePoint = AscResource<AppPricePointAttributes>;
+
+export interface AppPriceAttributes {
+  startDate: string | null;
+  endDate?: string | null;
+  manual?: boolean;
+}
+export type AppPrice = AscResource<AppPriceAttributes>;
+
+/** One row of the pricing matrix, resolved from data + included resources. */
+export interface PriceRow {
+  territoryId: string; // e.g. "USA", "EGY"
+  currency: string;
+  customerPrice: string;
+  manual: boolean; // true = explicitly set, false = Apple-equalized
+}

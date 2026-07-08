@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCredentials } from "@/lib/store";
 import { ascFetch, ascFetchAll } from "@/lib/asc/client";
+import { AppTabs } from "@/components/AppTabs";
 import {
   VERSION_FIELDS,
   type AppStoreVersion,
@@ -154,6 +155,15 @@ export default function MetadataEditorPage() {
       setSaveLog([...log]);
     }
 
+    const savedCount = log.filter((l) => l.startsWith("✓")).length;
+    if (savedCount > 1) {
+      // ~1.5 min per locale of ASC navigation, load times, and clicking
+      log.push(
+        `🎉 ${savedCount} locales updated — that's ~${Math.round(savedCount * 1.5)} min of ASC clicking you just skipped.`
+      );
+      setSaveLog([...log]);
+    }
+
     // Refresh from Apple so the table reflects reality
     const fresh = await ascFetchAll<VersionLocalization>(
       credentials,
@@ -177,6 +187,8 @@ export default function MetadataEditorPage() {
           ← Apps
         </Link>
       </div>
+
+      <AppTabs appId={id} active="metadata" />
 
       {error && (
         <p className="text-sm text-red-400 bg-red-950/40 border border-red-900 rounded-md px-3 py-2 mb-4">
@@ -257,7 +269,13 @@ export default function MetadataEditorPage() {
               {saveLog.map((line, i) => (
                 <div
                   key={i}
-                  className={line.startsWith("✓") ? "text-emerald-400" : "text-red-400"}
+                  className={
+                    line.startsWith("✓")
+                      ? "text-emerald-400"
+                      : line.startsWith("🎉")
+                        ? "text-emerald-300 font-semibold"
+                        : "text-red-400"
+                  }
                 >
                   {line}
                 </div>

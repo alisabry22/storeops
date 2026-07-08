@@ -58,9 +58,27 @@ export default function SetupPage() {
           Store<span className="text-emerald-400">Ops</span>
         </h1>
         <p className="mt-2 text-zinc-400">
-          Bulk-edit App Store metadata, pricing, and subscriptions across every
-          storefront. No more clicking through 50 locales.
+          App Store Connect, without the clicking. Your time goes back in your
+          pocket.
         </p>
+        <ul className="mt-5 space-y-2 text-sm text-zinc-300">
+          <li className="flex gap-2">
+            <span className="text-emerald-400">▸</span>
+            Update &ldquo;What&apos;s New&rdquo; in 40 locales —{" "}
+            <span className="text-zinc-500 line-through">1 hour</span>{" "}
+            <span className="text-emerald-400 font-semibold">1 click</span>
+          </li>
+          <li className="flex gap-2">
+            <span className="text-emerald-400">▸</span>
+            Reprice 175 storefronts, override just the ones you want —{" "}
+            <span className="text-zinc-500 line-through">an afternoon</span>{" "}
+            <span className="text-emerald-400 font-semibold">2 minutes</span>
+          </li>
+          <li className="flex gap-2">
+            <span className="text-emerald-400">▸</span>
+            Preview every change before it touches Apple. Dry run by default.
+          </li>
+        </ul>
       </div>
 
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-6">
@@ -133,6 +151,10 @@ export default function SetupPage() {
       <p className="mt-6 text-xs text-zinc-500 leading-relaxed">
         Create a key in App Store Connect → Users and Access → Integrations →
         App Store Connect API. Role: <strong>App Manager</strong> is enough.
+      </p>
+
+      <p className="mt-10 text-center text-xs text-zinc-600">
+        Built by an indie dev who got tired of clicking. 🛠
       </p>
     </main>
   );

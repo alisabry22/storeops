@@ -34,10 +34,10 @@ Then open http://localhost:3000 and connect with your App Store Connect API key
 - [x] Connect with ASC API key (browser-only key storage)
 - [x] Apps list
 - [x] Metadata bulk editor — description, keywords, promo text, What's New across all locales, "apply to all", char counters, per-locale save log
+- [x] Pricing matrix — set base price, preview all ~175 territories (dry run), override individual countries, one-click apply (`appPriceSchedules`)
 - [ ] App name / subtitle editing (`appInfoLocalizations`)
-- [ ] Pricing matrix — per-territory custom pricing (`appPriceSchedules`)
 - [ ] Subscription pricing per territory (`subscriptionPrices`) with preserve-existing-subscribers handling
-- [ ] Dry-run preview before every write
+- [ ] Scheduled price changes (startDate support)
 - [ ] Encrypt key at rest with a passphrase (AES-GCM)
 - [ ] CSV / spreadsheet import-export for translations
 

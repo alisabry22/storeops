@@ -103,7 +103,21 @@ export async function ascFetchAll<T>(
   path: string,
   params: Record<string, string> = {}
 ): Promise<T[]> {
-  const results: T[] = [];
+  const { data } = await ascFetchAllFull<T>(creds, path, params);
+  return data;
+}
+
+/**
+ * Fetch all pages of a paginated ASC collection, preserving `included`
+ * side-loaded resources (pricing endpoints depend on them).
+ */
+export async function ascFetchAllFull<T, I = unknown>(
+  creds: AscCredentials,
+  path: string,
+  params: Record<string, string> = {}
+): Promise<{ data: T[]; included: I[] }> {
+  const data: T[] = [];
+  const included: I[] = [];
   let next: string | null = path;
   let nextParams: Record<string, string> | undefined = {
     ...params,
@@ -111,21 +125,18 @@ export async function ascFetchAll<T>(
   };
 
   while (next) {
-    const page: { data: T[]; links?: { next?: string } } = await ascFetch(
-      creds,
-      next,
-      { params: nextParams }
-    );
-    results.push(...page.data);
+    const page: { data: T[]; included?: I[]; links?: { next?: string } } =
+      await ascFetch(creds, next, { params: nextParams });
+    data.push(...page.data);
+    if (page.included) included.push(...page.included);
     if (page.links?.next) {
       // links.next is a full Apple URL; convert to proxy path + params
       const u = new URL(page.links.next);
-      next = u.pathname.replace(/^\/v\d+/, (m) => m); // keep /v1 prefix
       next = u.pathname;
       nextParams = Object.fromEntries(u.searchParams.entries());
     } else {
       next = null;
     }
   }
-  return results;
+  return { data, included };
 }
