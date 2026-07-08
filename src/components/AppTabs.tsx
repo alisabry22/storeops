@@ -9,6 +9,11 @@ const TABS = [
     label: "Pricing",
     href: (id: string) => `/apps/${id}/pricing`,
   },
+  {
+    key: "subscriptions",
+    label: "Subscriptions",
+    href: (id: string) => `/apps/${id}/subscriptions`,
+  },
 ] as const;
 
 export type AppTabKey = (typeof TABS)[number]["key"];

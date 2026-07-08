@@ -100,3 +100,57 @@ export interface PriceRow {
   manual: boolean; // true = explicitly set, false = Apple-equalized
   pricePointId: string;
 }
+
+// ---- Subscriptions ----
+export interface SubscriptionGroupAttributes {
+  referenceName: string;
+}
+export type SubscriptionGroup = AscResource<SubscriptionGroupAttributes>;
+
+export interface SubscriptionAttributes {
+  name: string;
+  productId: string;
+  state: string;
+  subscriptionPeriod:
+    | "ONE_WEEK"
+    | "ONE_MONTH"
+    | "TWO_MONTHS"
+    | "THREE_MONTHS"
+    | "SIX_MONTHS"
+    | "ONE_YEAR"
+    | string;
+}
+export type Subscription = AscResource<SubscriptionAttributes>;
+
+export interface SubscriptionPriceAttributes {
+  startDate: string | null;
+  preserveCurrentLocalizedPrices: boolean;
+}
+export type SubscriptionPrice = AscResource<SubscriptionPriceAttributes>;
+
+export interface SubscriptionPricePointAttributes {
+  customerPrice: string;
+  proceeds: string;
+}
+export type SubscriptionPricePoint = AscResource<SubscriptionPricePointAttributes>;
+
+/** One row in the subscription pricing matrix. */
+export interface SubPriceRow {
+  territoryId: string;
+  currency: string;
+  customerPrice: string;
+  priceId: string;       // existing subscriptionPrices resource id (for DELETE)
+  pricePointId: string;
+}
+
+const PERIOD_LABELS: Record<string, string> = {
+  ONE_WEEK: "Weekly",
+  ONE_MONTH: "Monthly",
+  TWO_MONTHS: "2 Months",
+  THREE_MONTHS: "3 Months",
+  SIX_MONTHS: "6 Months",
+  ONE_YEAR: "Annual",
+};
+export function formatPeriod(p: string): string {
+  return PERIOD_LABELS[p] ?? p;
+}

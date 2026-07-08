@@ -4,7 +4,6 @@
  * varying columns. We take: first column = 3-letter territory code,
  * first numeric column after it = price in that territory's local currency.
  */
-import type { AppPricePoint } from "./asc/types";
 
 export interface SheetRow {
   territoryId: string;
@@ -71,11 +70,11 @@ export function parsePriceSheet(text: string): ParsedSheet {
 }
 
 /** Nearest valid Apple price point to the requested price (ties → cheaper). */
-export function snapToPricePoint(
-  points: AppPricePoint[],
+export function snapToPricePoint<T extends { id: string; attributes: { customerPrice: string } }>(
+  points: T[],
   target: number
-): AppPricePoint | null {
-  let best: AppPricePoint | null = null;
+): T | null {
+  let best: T | null = null;
   let bestDiff = Infinity;
   for (const p of points) {
     const v = Number(p.attributes.customerPrice);
