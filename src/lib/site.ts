@@ -1,6 +1,6 @@
 /** Canonical site config — single source of truth for SEO surfaces. */
 export const SITE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL ?? "https://storeops.app";
+  process.env.NEXT_PUBLIC_SITE_URL ?? "https://storeops.dev";
 
 export const SITE_NAME = "StoreOps";
 export const SITE_TITLE =
