@@ -21,6 +21,12 @@ const TABS = [
     icon: "🔄",
     href: (id: string) => `/apps/${id}/subscriptions`,
   },
+  {
+    key: "iap",
+    label: "In-App Purchases",
+    icon: "🛍️",
+    href: (id: string) => `/apps/${id}/iap`,
+  },
 ] as const;
 
 export type AppTabKey = (typeof TABS)[number]["key"];

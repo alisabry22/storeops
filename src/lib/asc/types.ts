@@ -143,6 +143,44 @@ export interface SubPriceRow {
   startDate: string | null; // null = "Starting Price" (original), date string = when this price became/becomes active
 }
 
+// ---- In-App Purchases ----
+export interface InAppPurchaseAttributes {
+  name: string;
+  productId: string;
+  inAppPurchaseType: "CONSUMABLE" | "NON_CONSUMABLE" | "NON_RENEWING_SUBSCRIPTION" | string;
+  state: string;
+}
+export type InAppPurchase = AscResource<InAppPurchaseAttributes>;
+
+export interface InAppPurchasePricePointAttributes {
+  customerPrice: string;
+  proceeds: string;
+}
+export type InAppPurchasePricePoint = AscResource<InAppPurchasePricePointAttributes>;
+
+export interface InAppPurchasePriceAttributes {
+  startDate: string | null;
+}
+export type InAppPurchasePrice = AscResource<InAppPurchasePriceAttributes>;
+
+/** One row in the IAP pricing matrix (resolved from price schedule + included). */
+export interface IapPriceRow {
+  territoryId: string;
+  currency: string;
+  customerPrice: string;
+  pricePointId: string;
+  priceId: string;
+}
+
+export function formatIapType(t: string): string {
+  const labels: Record<string, string> = {
+    CONSUMABLE: "Consumable",
+    NON_CONSUMABLE: "Non-Consumable",
+    NON_RENEWING_SUBSCRIPTION: "Non-Renewing Sub",
+  };
+  return labels[t] ?? t;
+}
+
 const PERIOD_LABELS: Record<string, string> = {
   ONE_WEEK: "Weekly",
   ONE_MONTH: "Monthly",
