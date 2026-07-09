@@ -391,6 +391,26 @@ export default function SetupPage() {
 
       {/* ---------- Footer ---------- */}
       <footer className="max-w-5xl mx-auto px-6 py-10 border-t border-zinc-900 mt-8">
+        <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 mb-6">
+          {[
+            { href: "/bulk-pricing", label: "Bulk App Pricing" },
+            { href: "/subscription-pricing", label: "Subscription Pricing" },
+            { href: "/metadata-tool", label: "Metadata Tool" },
+            { href: "/localization", label: "App Store Localization" },
+            { href: "/asc-api", label: "ASC API" },
+            { href: "/asc-automation", label: "ASC Automation" },
+            { href: "/csv-import", label: "CSV Import" },
+            { href: "/app-store-connect-pricing", label: "ASC Pricing" },
+          ].map((l) => (
+            <a
+              key={l.href}
+              href={l.href}
+              className="text-xs text-zinc-500 hover:text-zinc-300 transition"
+            >
+              {l.label}
+            </a>
+          ))}
+        </div>
         <p className="text-center text-xs text-zinc-500">
           Built by an indie dev who got tired of clicking. 🛠 — Store
           <span className="text-emerald-500">Ops</span>
