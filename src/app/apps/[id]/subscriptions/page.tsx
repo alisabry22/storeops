@@ -1,13 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCredentials } from "@/lib/store";
-import { ascFetch, ascFetchAllFull } from "@/lib/asc/client";
+import { ascFetch, ascFetchAllFull, AscError } from "@/lib/asc/client";
 import { AppTabs } from "@/components/AppTabs";
 import { PaywallModal } from "@/components/Paywall";
 import { SnapshotPanel } from "@/components/SnapshotPanel";
+import { TopBar } from "@/components/TopBar";
 import { useIsPro } from "@/lib/license";
 import { takeSnapshot, type PriceSnapshot } from "@/lib/snapshots";
 import { buildAiPrompt, buildCsv, parsePriceSheet, snapToPricePoint } from "@/lib/pricing-import";
@@ -96,7 +96,6 @@ export default function SubscriptionsPage() {
   const [importWarnings, setImportWarnings] = useState<string[]>([]);
   const [importPreview, setImportPreview] = useState<SubImportRow[] | null>(null);
   const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
-  const [preserveExisting, setPreserveExisting] = useState(true);
   const [applying, setApplying] = useState<{ done: number; total: number } | null>(null);
   const [applied, setApplied] = useState(false);
   const [copiedPrompt, setCopiedPrompt] = useState(false);
@@ -327,8 +326,7 @@ export default function SubscriptionsPage() {
    * (current/historical entries 409 on DELETE), then POST the new price.
    */
   async function postPrices(
-    rows: Array<{ territoryId: string; pointId: string }>,
-    preserve: boolean
+    rows: Array<{ territoryId: string; pointId: string }>
   ) {
     if (!credentials || !selectedSubId) return;
     let done = 0;
@@ -338,22 +336,33 @@ export default function SubscriptionsPage() {
       await Promise.all(
         batch.map(async (row) => {
           const existing = currentByTerritory.get(row.territoryId) ?? [];
-          // Cancel any future-scheduled price first; current/historical
-          // entries 409 on DELETE, so we leave them alone.
+          // Attempt to cancel any future-scheduled prices. A 409 here means
+          // the price became effective since we last loaded (timezone boundary,
+          // or the page was open overnight) — treat it as current, not future.
+          let hasCurrent = existing.some(
+            (e) => !e.startDate || e.startDate <= today
+          );
           for (const e of existing) {
             if (!e.startDate || e.startDate <= today) continue;
-            await ascFetch(credentials, `/v1/subscriptionPrices/${e.priceId}`, {
-              method: "DELETE",
-            });
+            try {
+              await ascFetch(credentials, `/v1/subscriptionPrices/${e.priceId}`, {
+                method: "DELETE",
+              });
+            } catch (deleteErr) {
+              if (deleteErr instanceof AscError && deleteErr.status === 409) {
+                // Apple says this price is already current — can't delete it.
+                // Mark hasCurrent so we schedule tomorrow instead of null.
+                hasCurrent = true;
+              } else {
+                throw deleteErr;
+              }
+            }
           }
           // Apple only allows ONE startDate:null (current) subscriptionPrices
           // resource per (subscription, territory). If a current price already
           // exists we cannot POST another null one (409) and cannot DELETE the
           // existing one (409) — the only valid path is to schedule the change
           // with startDate = tomorrow.
-          const hasCurrent = existing.some(
-            (e) => !e.startDate || e.startDate <= today
-          );
           const startDate = hasCurrent
             ? new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)
             : null;
@@ -387,8 +396,7 @@ export default function SubscriptionsPage() {
     try {
       snapshotBeforeApply(`Before sheet import · ${importPreview.length} territories`);
       await postPrices(
-        importPreview.map((r) => ({ territoryId: r.territoryId, pointId: r.pointId })),
-        preserveExisting
+        importPreview.map((r) => ({ territoryId: r.territoryId, pointId: r.pointId }))
       );
       setApplied(true);
       setImportPreview(null);
@@ -409,8 +417,7 @@ export default function SubscriptionsPage() {
     try {
       snapshotBeforeApply("Before restore (auto-safety)");
       await postPrices(
-        snapshot.rows.map((r) => ({ territoryId: r.territoryId, pointId: r.pricePointId })),
-        true // restoring always protects existing subscribers
+        snapshot.rows.map((r) => ({ territoryId: r.territoryId, pointId: r.pricePointId }))
       );
       setApplied(true);
       await loadPrices(selectedSubId);
@@ -467,9 +474,7 @@ export default function SubscriptionsPage() {
 
   return (
     <main className="max-w-5xl mx-auto w-full px-6 py-10">
-      <div className="flex items-center gap-3 mb-6 text-sm text-zinc-400">
-        <Link href="/apps" className="hover:text-zinc-200">← Apps</Link>
-      </div>
+      <TopBar backToApps />
 
       <AppTabs appId={id} active="subscriptions" />
 
@@ -486,30 +491,64 @@ export default function SubscriptionsPage() {
 
       {applied && (
         <p className="text-sm text-emerald-400 bg-emerald-950/40 border border-emerald-900 rounded-md px-3 py-2 mb-4">
-          ✓ Subscription prices updated. Existing subscribers are {preserveExisting ? "protected — they keep their current price" : "moved to the new price"}.
+          ✓ Subscription prices updated. Existing subscribers are grandfathered at their current price by Apple — only new subscribers see the new tier.
         </p>
       )}
 
       {/* Subscription selector */}
       <div className="card p-5 mb-6">
-        <h2 className="font-semibold mb-3">Select subscription</h2>
+        <div className="flex items-baseline justify-between mb-3">
+          <h2 className="font-semibold">Select subscription</h2>
+          {subscriptions.length > 1 && (
+            <span className="text-xs text-zinc-500 font-mono">
+              {subscriptions.length} subscriptions
+            </span>
+          )}
+        </div>
         {loadingGroups ? (
           <p className="text-sm text-zinc-400 animate-pulse">Loading subscriptions…</p>
         ) : subscriptions.length === 0 ? (
           <p className="text-sm text-zinc-400">No subscriptions found for this app.</p>
         ) : (
-          <select
-            value={selectedSubId}
-            onChange={(e) => setSelectedSubId(e.target.value)}
-            className="rounded-md bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm min-w-72"
-          >
-            <option value="">Choose a subscription…</option>
-            {subscriptions.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.attributes.name} — {formatPeriod(s.attributes.subscriptionPeriod)} · {s.attributes.productId}
-              </option>
-            ))}
-          </select>
+          <div className="max-w-md">
+            <input
+              list="sub-list"
+              value={
+                subscriptions.find((s) => s.id === selectedSubId)
+                  ? `${subscriptions.find((s) => s.id === selectedSubId)!.attributes.name} — ${formatPeriod(
+                      subscriptions.find((s) => s.id === selectedSubId)!.attributes.subscriptionPeriod
+                    )} · ${subscriptions.find((s) => s.id === selectedSubId)!.attributes.productId}`
+                  : ""
+              }
+              onChange={(e) => {
+                const text = e.target.value;
+                const found = subscriptions.find(
+                  (s) =>
+                    `${s.attributes.name} — ${formatPeriod(s.attributes.subscriptionPeriod)} · ${s.attributes.productId}` ===
+                    text
+                );
+                if (found) setSelectedSubId(found.id);
+              }}
+              placeholder="Choose a subscription…  (type to search)"
+              className="w-full rounded-md bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
+            />
+            <datalist id="sub-list">
+              {subscriptions.map((s) => (
+                <option
+                  key={s.id}
+                  value={`${s.attributes.name} — ${formatPeriod(s.attributes.subscriptionPeriod)} · ${s.attributes.productId}`}
+                />
+              ))}
+            </datalist>
+            {selectedSubId && subscriptions.length > 1 && (
+              <p className="mt-1.5 text-xs text-zinc-500">
+                Selected:{" "}
+                <span className="text-zinc-300 font-mono">
+                  {subscriptions.find((s) => s.id === selectedSubId)?.attributes.productId}
+                </span>
+              </p>
+            )}
+          </div>
         )}
       </div>
 
@@ -584,16 +623,7 @@ export default function SubscriptionsPage() {
               </button>
 
               {importPreview && (
-                <>
-                  <label className="flex items-center gap-1.5 text-xs text-zinc-400">
-                    <input
-                      type="checkbox"
-                      checked={preserveExisting}
-                      onChange={(e) => setPreserveExisting(e.target.checked)}
-                      className="accent-emerald-500"
-                    />
-                    Protect existing subscribers (keep their current price)
-                  </label>
+                  !applied ? (
                   <button
                     onClick={() => (isPro ? applyImport() : setPaywallOpen(true))}
                     disabled={applying !== null}
@@ -603,15 +633,22 @@ export default function SubscriptionsPage() {
                       ? `Applying ${applying.done}/${applying.total}…`
                       : `${isPro ? "" : "🔒 "}Apply ${importPreview.length} prices`}
                   </button>
-                </>
-              )}
-            </div>
+                  ) : (
+                    <span className="text-xs text-emerald-400">
+                      ✓ Applied — start a new import to make further changes.
+                    </span>
+                  )
+                )}
+              </div>
 
-            {!preserveExisting && importPreview && (
-              <p className="mt-2 text-xs text-amber-400 bg-amber-950/30 border border-amber-900 rounded-md px-3 py-2">
-                Warning: existing subscribers will be moved to the new price on their next renewal.
-              </p>
-            )}
+              {importPreview && !applied && (
+                <p className="mt-2 text-xs text-zinc-400 flex items-start gap-1.5">
+                  <span className="text-emerald-500 mt-px" aria-hidden>✓</span>
+                  <span>
+                    Existing subscribers are <strong className="text-zinc-300 font-medium">always grandfathered</strong> by Apple — they keep the tier they paid for until they cancel/renew. Only new subscribers see the new price.
+                  </span>
+                </p>
+              )}
 
             {importWarnings.length > 0 && (
               <div className="mt-3 rounded-md border border-amber-900 bg-amber-950/30 px-3 py-2 text-xs text-amber-400 space-y-0.5 max-h-24 overflow-y-auto">
