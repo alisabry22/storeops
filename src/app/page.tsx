@@ -241,6 +241,23 @@ export default function SetupPage() {
         </div>
       </section>
 
+      {/* ---------- Stats strip ---------- */}
+      <section className="max-w-5xl mx-auto px-6 pb-2">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+          {[
+            { n: "175", l: "storefronts" },
+            { n: "40+", l: "locales" },
+            { n: "20 min", l: "per token" },
+            { n: "0", l: "servers store your key" },
+          ].map((s) => (
+            <div key={s.l} className="card p-4 animate-fade-up">
+              <p className="text-2xl font-bold text-emerald-400 font-mono tabular-nums">{s.n}</p>
+              <p className="text-xs text-zinc-400 mt-0.5">{s.l}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
       {/* ---------- How it works ---------- */}
       <section className="max-w-5xl mx-auto px-6 py-12">
         <h2 className="text-2xl font-bold tracking-tight mb-8">
@@ -336,7 +353,7 @@ export default function SetupPage() {
               <li>✓ Connect &amp; browse everything</li>
               <li>✓ Preview every change (dry run)</li>
               <li>✓ Export prices &amp; AI prompts</li>
-              <li className="text-zinc-600">✗ Applying changes to Apple</li>
+              <li className="text-zinc-500">✗ Applying changes to Apple</li>
             </ul>
           </div>
           <div className="card card-hero p-6 relative">
@@ -362,6 +379,9 @@ export default function SetupPage() {
             >
               Get Pro
             </a>
+            <p className="mt-3 text-center text-xs text-zinc-400">
+              <span className="text-emerald-400">14-day refund</span> · cancel anytime · one key, all your devices
+            </p>
           </div>
         </div>
         <p className="mt-6 text-center text-sm text-zinc-500">
@@ -371,7 +391,7 @@ export default function SetupPage() {
 
       {/* ---------- Footer ---------- */}
       <footer className="max-w-5xl mx-auto px-6 py-10 border-t border-zinc-900 mt-8">
-        <p className="text-center text-xs text-zinc-600">
+        <p className="text-center text-xs text-zinc-500">
           Built by an indie dev who got tired of clicking. 🛠 — Store
           <span className="text-emerald-500">Ops</span>
         </p>

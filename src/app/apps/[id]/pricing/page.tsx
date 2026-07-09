@@ -1,13 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCredentials } from "@/lib/store";
 import { AscError, ascFetch, ascFetchAllFull } from "@/lib/asc/client";
 import { AppTabs } from "@/components/AppTabs";
 import { PaywallModal } from "@/components/Paywall";
 import { SnapshotPanel } from "@/components/SnapshotPanel";
+import { TopBar } from "@/components/TopBar";
 import { useIsPro } from "@/lib/license";
 import { takeSnapshot, type PriceSnapshot } from "@/lib/snapshots";
 import {
@@ -629,11 +629,7 @@ export default function PricingPage() {
 
   return (
     <main className="max-w-5xl mx-auto w-full px-6 py-10">
-      <div className="flex items-center gap-3 mb-6 text-sm text-zinc-400">
-        <Link href="/apps" className="hover:text-zinc-200">
-          ← Apps
-        </Link>
-      </div>
+      <TopBar backToApps />
 
       <AppTabs appId={id} active="pricing" />
 
@@ -743,14 +739,16 @@ export default function PricingPage() {
               </label>
               <button
                 onClick={() => (isPro ? applyImport() : setPaywallOpen(true))}
-                disabled={applying}
+                disabled={applying || applied}
                 className="btn-glow rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 disabled:opacity-40 disabled:shadow-none transition"
               >
                 {applying
                   ? "Applying…"
-                  : isPro
-                    ? `Apply ${importPreview.length} prices`
-                    : `🔒 Apply ${importPreview.length} prices`}
+                  : applied
+                    ? `✓ Applied — start a new import to change again`
+                    : isPro
+                      ? `Apply ${importPreview.length} prices`
+                      : `🔒 Apply ${importPreview.length} prices`}
               </button>
             </>
           )}
@@ -849,12 +847,14 @@ export default function PricingPage() {
           {preview && (
             <button
               onClick={() => (isPro ? applySchedule() : setPaywallOpen(true))}
-              disabled={applying}
+              disabled={applying || applied}
               className="btn-glow rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 disabled:opacity-40 disabled:shadow-none transition"
             >
               {applying
                 ? "Applying…"
-                : `${isPro ? "" : "🔒 "}Apply to ${preview.length} territories${overrideCount > 0 ? ` (${overrideCount} overridden)` : ""}`}
+                : applied
+                  ? `✓ Applied — preview again to make further changes`
+                  : `${isPro ? "" : "🔒 "}Apply to ${preview.length} territories${overrideCount > 0 ? ` (${overrideCount} overridden)` : ""}`}
             </button>
           )}
         </div>

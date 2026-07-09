@@ -94,6 +94,7 @@ export function SnapshotPanel({
                     }}
                     className="text-xs text-zinc-600 hover:text-red-400"
                     title="Delete snapshot"
+                    aria-label={`Delete snapshot: ${s.label}`}
                   >
                     ✕
                   </button>

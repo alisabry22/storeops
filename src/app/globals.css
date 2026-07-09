@@ -65,6 +65,49 @@ body {
   animation: fade-up 0.4s ease-out both;
 }
 
+/* modal scale-in — used by Paywall + future dialogs */
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+.animate-modal-in {
+  animation: modal-in 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes backdrop-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.animate-backdrop-in {
+  animation: backdrop-in 0.2s ease-out both;
+}
+
+/* the celebration check on Pro activation */
+@keyframes check-draw {
+  0%   { stroke-dashoffset: 48; }
+  60%  { stroke-dashoffset: 0; }
+  100% { stroke-dashoffset: 0; }
+}
+@keyframes circle-pop {
+  0%   { transform: scale(0); opacity: 0; }
+  60%  { transform: scale(1.08); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.animate-check-circle {
+  transform-origin: center;
+  animation: circle-pop 0.4s ease-out both;
+}
+.animate-check-stroke {
+  stroke-dasharray: 48;
+  animation: check-draw 0.5s ease-out 0.15s both;
+}
+
 /* primary CTA glow — the money buttons */
 .btn-glow {
   box-shadow: 0 0 24px rgba(16, 185, 129, 0.25);

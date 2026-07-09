@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCredentials } from "@/lib/store";
 import { ascFetch, ascFetchAll } from "@/lib/asc/client";
 import { AppTabs } from "@/components/AppTabs";
 import { PaywallModal } from "@/components/Paywall";
+import { TopBar } from "@/components/TopBar";
 import { useIsPro } from "@/lib/license";
 import {
   VERSION_FIELDS,
@@ -186,11 +186,7 @@ export default function MetadataEditorPage() {
 
   return (
     <main className="max-w-5xl mx-auto w-full px-6 py-10">
-      <div className="flex items-center gap-3 mb-6 text-sm text-zinc-400">
-        <Link href="/apps" className="hover:text-zinc-200">
-          ← Apps
-        </Link>
-      </div>
+      <TopBar backToApps />
 
       <AppTabs appId={id} active="metadata" />
 

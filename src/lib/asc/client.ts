@@ -36,13 +36,45 @@ class RequestQueue {
 const queue = new RequestQueue();
 
 export class AscError extends Error {
+  public hint: string;
   constructor(
     public status: number,
     public detail: string,
     public errors: Array<{ code: string; title: string; detail: string }> = []
   ) {
-    super(`ASC ${status}: ${detail}`);
+    super(humanizeAscError(status, errors, detail));
+    this.hint = this.message;
   }
+}
+
+/**
+ * Translate Apple's terse JSON:API errors into something an indie dev can act on.
+ * Falls back to the raw detail if we don't have a specific hint.
+ */
+function humanizeAscError(
+  status: number,
+  errors: Array<{ code: string; title: string; detail: string }>,
+  detail: string
+): string {
+  const first = errors[0];
+  const code = first?.code;
+  const raw = first?.detail ?? detail;
+
+  if (status === 401)
+    return "Your key was rejected (401). Re-check the Issuer ID, Key ID, and that the .p8 file matches the key shown in App Store Connect → Users and Access → Keys.";
+  if (status === 403)
+    return "This key can't do that (403). The key's role in App Store Connect lacks the required permission — App Manager or Admin is needed for pricing/metadata writes.";
+  if (status === 404)
+    return "Apple couldn't find that resource (404). It may have been deleted, or the version/subscription may not be in an editable state.";
+  if (status === 409 && code === "ENTITY_ERROR.ATTRIBUTE.UNKNOWN")
+    return `Apple rejected an attribute as unknown (409): ${raw}. Refresh the page and try again — if it persists, this version of StoreOps may be sending a field Apple changed.`;
+  if (status === 409)
+    return `Apple rejected this as a conflict (409): ${raw}. For subscriptions this usually means a price already exists for that territory — refresh and the tool will schedule it instead.`;
+  if (status === 422)
+    return `Apple rejected the data (422): ${raw}. Check the values in your sheet against Apple's allowed price tiers.`;
+  if (status >= 500)
+    return `Apple's server errored (${status}). This is on Apple's side — wait a minute and retry. If it persists, Apple's ASC API is having an outage.`;
+  return raw || `Apple returned status ${status}.`;
 }
 
 export async function ascFetch<T = unknown>(

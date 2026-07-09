@@ -5,8 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCredentials } from "@/lib/store";
 import { ascFetchAll } from "@/lib/asc/client";
-import { PaywallModal } from "@/components/Paywall";
-import { useIsPro, useLicense } from "@/lib/license";
+import { TopBar } from "@/components/TopBar";
+import { useLicense } from "@/lib/license";
 import type { App } from "@/lib/asc/types";
 
 function AppAvatar({ name }: { name: string }) {
@@ -25,13 +25,11 @@ function AppAvatar({ name }: { name: string }) {
 
 export default function AppsPage() {
   const router = useRouter();
-  const { credentials, clearCredentials } = useCredentials();
+  const { credentials } = useCredentials();
   const [apps, setApps] = useState<App[] | null>(null);
   const [error, setError] = useState("");
   const [hydrated, setHydrated] = useState(false);
-  const isPro = useIsPro();
-  const { revalidate, deactivate, productName } = useLicense();
-  const [paywallOpen, setPaywallOpen] = useState(false);
+  const { revalidate } = useLicense();
 
   useEffect(() => setHydrated(true), []);
 
@@ -55,41 +53,11 @@ export default function AppsPage() {
 
   return (
     <main className="max-w-3xl mx-auto w-full px-6 py-12">
-      <div className="flex items-center justify-between mb-10">
-        <h1 className="text-2xl font-bold tracking-tight">
-          Store<span className="text-emerald-400">Ops</span>
-          <span className="ml-3 text-zinc-500 font-normal text-lg">
-            Your apps
-          </span>
-        </h1>
-        <div className="flex items-center gap-3">
-          {isPro ? (
-            <span
-              className="text-xs rounded-full border border-emerald-800 bg-emerald-950/40 px-3 py-1 text-emerald-400 cursor-default"
-              title={`${productName ?? "StoreOps Pro"} — double-click to remove license from this device`}
-              onDoubleClick={deactivate}
-            >
-              ★ Pro
-            </span>
-          ) : (
-            <button
-              onClick={() => setPaywallOpen(true)}
-              className="text-xs rounded-full border border-zinc-700 px-3 py-1 text-zinc-300 hover:border-emerald-600 hover:text-emerald-400 transition"
-            >
-              Upgrade to Pro
-            </button>
-          )}
-          <button
-            onClick={() => {
-              clearCredentials();
-              router.replace("/");
-            }}
-            className="text-sm text-zinc-500 hover:text-zinc-200 transition"
-          >
-            Disconnect
-          </button>
-        </div>
-      </div>
+      <TopBar />
+
+      <h2 className="text-lg font-semibold text-zinc-400 mb-6">
+        Your apps
+      </h2>
 
       {error && (
         <p className="text-sm text-red-400 bg-red-950/40 border border-red-900 rounded-md px-3 py-2 mb-4">
@@ -140,11 +108,27 @@ export default function AppsPage() {
           </Link>
         ))}
         {apps?.length === 0 && (
-          <p className="text-zinc-400">No apps found on this account.</p>
+          <div className="card p-8 text-center animate-fade-up">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-emerald-900/70 bg-emerald-950/40 text-2xl">
+              📦
+            </div>
+            <h3 className="font-semibold mb-1">No apps on this key</h3>
+            <p className="text-sm text-zinc-400 mb-4 max-w-sm mx-auto">
+              The App Store Connect key you connected has no apps visible. This
+              usually means the key's role isn't granted access to any app, or
+              you haven't created an app record yet.
+            </p>
+            <a
+              href="https://appstoreconnect.apple.com/apps"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block rounded-md border border-zinc-700 px-4 py-2 text-sm text-zinc-200 hover:border-emerald-600 hover:text-emerald-400 transition"
+            >
+              Open App Store Connect →
+            </a>
+          </div>
         )}
       </div>
-
-      <PaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
     </main>
   );
 }
