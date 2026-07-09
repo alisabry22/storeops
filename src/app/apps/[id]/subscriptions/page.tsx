@@ -338,20 +338,32 @@ export default function SubscriptionsPage() {
       await Promise.all(
         batch.map(async (row) => {
           const existing = currentByTerritory.get(row.territoryId) ?? [];
+          // Cancel any future-scheduled price first; current/historical
+          // entries 409 on DELETE, so we leave them alone.
           for (const e of existing) {
             if (!e.startDate || e.startDate <= today) continue;
             await ascFetch(credentials, `/v1/subscriptionPrices/${e.priceId}`, {
               method: "DELETE",
             });
           }
+          // Apple only allows ONE startDate:null (current) subscriptionPrices
+          // resource per (subscription, territory). If a current price already
+          // exists we cannot POST another null one (409) and cannot DELETE the
+          // existing one (409) — the only valid path is to schedule the change
+          // with startDate = tomorrow.
+          const hasCurrent = existing.some(
+            (e) => !e.startDate || e.startDate <= today
+          );
+          const startDate = hasCurrent
+            ? new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)
+            : null;
           await ascFetch(credentials, `/v1/subscriptionPrices`, {
             method: "POST",
             body: {
               data: {
                 type: "subscriptionPrices",
                 attributes: {
-                  startDate: null,
-                  preserveCurrentLocalizedPrices: preserve,
+                  startDate,
                 },
                 relationships: {
                   subscription: { data: { type: "subscriptions", id: selectedSubId } },

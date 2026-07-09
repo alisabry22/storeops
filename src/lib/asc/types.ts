@@ -124,7 +124,6 @@ export type Subscription = AscResource<SubscriptionAttributes>;
 
 export interface SubscriptionPriceAttributes {
   startDate: string | null;
-  preserveCurrentLocalizedPrices: boolean;
 }
 export type SubscriptionPrice = AscResource<SubscriptionPriceAttributes>;
 
