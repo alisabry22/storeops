@@ -56,10 +56,16 @@ export function PaywallModal({
           </div>
         ) : (
           <>
-            <h2 className="text-lg font-bold mb-1">
-              Unlock applies with{" "}
-              <span className="text-emerald-400">StoreOps Pro</span>
-            </h2>
+            <div className="flex items-baseline justify-between mb-1">
+              <h2 className="text-lg font-bold">
+                Unlock applies with{" "}
+                <span className="text-emerald-400">StoreOps Pro</span>
+              </h2>
+              <p className="text-right">
+                <span className="text-2xl font-bold">$49.99</span>
+                <span className="text-xs text-zinc-500">/yr</span>
+              </p>
+            </div>
             <p className="text-sm text-zinc-400 mb-4">
               Free covers browsing, previews, and CSV exports. Writing to
               Apple — bulk metadata, pricing, subscriptions, one-click
@@ -71,17 +77,19 @@ export function PaywallModal({
               <li>✓ Reprice 175 storefronts in one click</li>
               <li>✓ Subscription pricing with subscriber protection</li>
               <li>✓ Pre-apply snapshots + one-click rollback</li>
-              <li>✓ One botched manual update costs more than this</li>
             </ul>
 
             <a
               href={CHECKOUT_URL}
               target="_blank"
               rel="noopener noreferrer"
-              className="block w-full text-center rounded-md bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 transition mb-4"
+              className="btn-glow block w-full text-center rounded-md bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 transition mb-1.5"
             >
               Get Pro → instant license key
             </a>
+            <p className="text-center text-xs text-zinc-500 mb-4">
+              One botched manual price update costs more than this.
+            </p>
 
             <div className="border-t border-zinc-800 pt-4">
               <label className="block text-xs text-zinc-400 mb-1.5">

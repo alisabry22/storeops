@@ -11,7 +11,7 @@ body {
   background:
     radial-gradient(
       60rem 30rem at 50% -10rem,
-      rgba(16, 185, 129, 0.07),
+      rgba(16, 185, 129, 0.08),
       transparent
     ),
     #09090b;
@@ -24,4 +24,74 @@ body {
 /* tabular numbers wherever prices/counters show up */
 .font-mono {
   font-variant-numeric: tabular-nums;
+}
+
+/* thin dark scrollbars — the default chrome ones ruin dark tables */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #3f3f46 transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+  border-radius: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* visible keyboard focus without ugly default outlines */
+:focus-visible {
+  outline: 2px solid rgba(16, 185, 129, 0.6);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* entrance animation for cards/sections */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-fade-up {
+  animation: fade-up 0.4s ease-out both;
+}
+
+/* primary CTA glow — the money buttons */
+.btn-glow {
+  box-shadow: 0 0 24px rgba(16, 185, 129, 0.25);
+  transition:
+    box-shadow 0.2s ease,
+    transform 0.1s ease;
+}
+.btn-glow:hover:not(:disabled) {
+  box-shadow: 0 0 36px rgba(16, 185, 129, 0.4);
+}
+.btn-glow:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+/* soft card treatment used across the app */
+.card {
+  border-radius: 1rem;
+  border: 1px solid rgba(63, 63, 70, 0.6); /* zinc-700/60 */
+  background: rgba(24, 24, 27, 0.5); /* zinc-900/50 */
+}
+.card-hero {
+  border-color: rgba(6, 95, 70, 0.5); /* emerald-900ish */
+  background:
+    radial-gradient(
+      24rem 10rem at 20% 0%,
+      rgba(16, 185, 129, 0.06),
+      transparent
+    ),
+    rgba(24, 24, 27, 0.5);
 }

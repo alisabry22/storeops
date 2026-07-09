@@ -241,7 +241,7 @@ export default function MetadataEditorPage() {
             <button
               onClick={() => (isPro ? saveAll() : setPaywallOpen(true))}
               disabled={!versionEditable || dirtyCount === 0 || saving}
-              className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed transition"
+              className="btn-glow rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 disabled:opacity-40 disabled:shadow-none disabled:cursor-not-allowed transition"
             >
               {saving
                 ? "Saving…"

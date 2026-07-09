@@ -657,7 +657,7 @@ export default function PricingPage() {
       )}
 
       {/* ---- Sheet import flow ---- */}
-      <div className="rounded-xl border border-emerald-900/60 bg-zinc-900/60 p-5 mb-6">
+      <div className="card card-hero p-5 mb-6">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
           <h2 className="font-semibold">
             Import price sheet{" "}
@@ -744,7 +744,7 @@ export default function PricingPage() {
               <button
                 onClick={() => (isPro ? applyImport() : setPaywallOpen(true))}
                 disabled={applying}
-                className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 disabled:opacity-40 transition"
+                className="btn-glow rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 disabled:opacity-40 disabled:shadow-none transition"
               >
                 {applying
                   ? "Applying…"
@@ -811,7 +811,7 @@ export default function PricingPage() {
       </div>
 
       {/* ---- Change price flow ---- */}
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 mb-8">
+      <div className="card p-5 mb-8">
         <h2 className="font-semibold mb-3">
           New price{" "}
           <span className="text-zinc-500 font-normal text-sm">
@@ -850,7 +850,7 @@ export default function PricingPage() {
             <button
               onClick={() => (isPro ? applySchedule() : setPaywallOpen(true))}
               disabled={applying}
-              className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 disabled:opacity-40 transition"
+              className="btn-glow rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 disabled:opacity-40 disabled:shadow-none transition"
             >
               {applying
                 ? "Applying…"
