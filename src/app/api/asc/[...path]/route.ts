@@ -47,6 +47,11 @@ async function handler(
     body,
   });
 
+  // 204/205/304 must have a null body — even "" throws in the Response constructor
+  if (upstream.status === 204 || upstream.status === 205 || upstream.status === 304) {
+    return new NextResponse(null, { status: upstream.status });
+  }
+
   const responseBody = await upstream.text();
   return new NextResponse(responseBody, {
     status: upstream.status,
