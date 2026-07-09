@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useCredentials } from "@/lib/store";
 import { ascFetch } from "@/lib/asc/client";
+import { destroyPrivateKey, storePrivateKey } from "@/lib/asc/jwt";
 
 export default function SetupPage() {
   const router = useRouter();
@@ -34,14 +35,19 @@ export default function SetupPage() {
     const creds = {
       issuerId: issuerId.trim(),
       keyId: keyId.trim(),
-      privateKeyPem,
     };
     try {
+      // Import the .p8 as a NON-EXTRACTABLE key (IndexedDB). The PEM itself
+      // is never persisted anywhere — after this line it only exists in the
+      // form state, which is discarded on navigation.
+      await storePrivateKey(privateKeyPem);
       // Validate the credentials with a real API call before saving
       await ascFetch(creds, "/v1/apps", { params: { limit: "1" } });
       setCredentials(creds);
       router.push("/apps");
     } catch (err) {
+      // Bad key or bad IDs — don't leave a dangling signing key behind
+      await destroyPrivateKey();
       setStatus("error");
       setError(
         err instanceof Error ? err.message : "Could not connect to Apple."
@@ -84,9 +90,10 @@ export default function SetupPage() {
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-6">
         <h2 className="font-semibold mb-1">Connect App Store Connect</h2>
         <p className="text-sm text-zinc-400 mb-5">
-          Your key is stored{" "}
-          <strong className="text-zinc-200">only in this browser</strong> and
-          used to sign 20-minute tokens locally. It never touches our servers.
+          Your .p8 is imported as a{" "}
+          <strong className="text-zinc-200">non-extractable browser key</strong>{" "}
+          — it signs 20-minute tokens locally and can never be read back, not
+          even by our own code. It never touches our servers.
         </p>
 
         <form onSubmit={connect} className="space-y-4">

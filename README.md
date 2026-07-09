@@ -14,10 +14,11 @@ Bulk-edit App Store metadata, pricing, and subscriptions across every storefront
 
 Your App Store Connect API key has write access to your whole account, so we designed around never having it:
 
-1. Your `.p8` private key is stored **only in your browser** (localStorage).
-2. JWTs are signed **locally in your browser** via WebCrypto (ES256), valid for 20 minutes max.
+1. Your `.p8` is imported as a **non-extractable WebCrypto key** (IndexedDB). The browser can sign with it but physically cannot export the key material — not even our own JavaScript, an XSS payload, or a browser extension can read it back. The PEM itself is never persisted anywhere.
+2. JWTs are signed **locally in your browser** (ES256), valid for 20 minutes max. Only these short-lived tokens ever cross the wire — over TLS.
 3. Requests go through a thin same-origin proxy (`/api/asc/*`) that exists only because Apple blocks CORS. It forwards your short-lived token verbatim, stores nothing, logs nothing.
-4. The code is right here — audit it.
+4. Strict security headers (HSTS, nosniff, frame-ancestors none, no-referrer).
+5. The code is right here — audit it.
 
 ## Getting started
 

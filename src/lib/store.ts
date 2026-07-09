@@ -1,14 +1,15 @@
 /**
  * Client-side credential store.
- * Credentials live in localStorage on the user's machine only.
- * (Roadmap: encrypt at rest with a passphrase via WebCrypto AES-GCM.)
+ * Only issuerId + keyId live in localStorage. The private key itself is a
+ * non-extractable CryptoKey in IndexedDB (see asc/keystore.ts) — it cannot
+ * be read back, only signed with.
  */
 "use client";
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { AscCredentials } from "./asc/jwt";
-import { clearTokenCache } from "./asc/jwt";
+import { destroyPrivateKey } from "./asc/jwt";
 
 interface CredentialState {
   credentials: AscCredentials | null;
@@ -22,7 +23,7 @@ export const useCredentials = create<CredentialState>()(
       credentials: null,
       setCredentials: (creds) => set({ credentials: creds }),
       clearCredentials: () => {
-        clearTokenCache();
+        void destroyPrivateKey();
         set({ credentials: null });
       },
     }),

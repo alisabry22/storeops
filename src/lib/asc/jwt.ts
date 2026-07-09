@@ -1,20 +1,44 @@
 /**
  * App Store Connect JWT generation — runs ENTIRELY in the browser.
- * The .p8 private key never leaves the user's machine; only the signed,
- * short-lived (20 min) token is sent to our proxy.
+ * The .p8 is imported ONCE as a non-extractable WebCrypto key (IndexedDB);
+ * after that the key material cannot be read back by anyone — including us.
+ * Only the signed, short-lived (20 min) token is sent to our proxy.
  */
 import { SignJWT, importPKCS8 } from "jose";
+import { deleteKey, loadKey, saveKey } from "./keystore";
 
 export interface AscCredentials {
   issuerId: string;
   keyId: string;
-  privateKeyPem: string; // contents of the .p8 file
+  /** Legacy only — pre-keystore credentials persisted the PEM. Migrated on first use. */
+  privateKeyPem?: string;
 }
 
 const TOKEN_LIFETIME_SECONDS = 19 * 60; // Apple max is 20 min; stay under
 
 let cachedToken: { token: string; expiresAt: number; keyId: string } | null =
   null;
+let cachedKey: CryptoKey | null = null;
+
+async function resolveSigningKey(
+  creds: AscCredentials
+): Promise<CryptoKey> {
+  if (cachedKey) return cachedKey;
+  let key = await loadKey();
+  if (!key && creds.privateKeyPem) {
+    // Legacy migration: import the persisted PEM into the keystore once.
+    // The caller (KeyMigrator) strips the PEM from localStorage after this.
+    key = await importPrivateKey(creds.privateKeyPem);
+    await saveKey(key);
+  }
+  if (!key) {
+    throw new Error(
+      "No signing key on this device — reconnect with your .p8 file."
+    );
+  }
+  cachedKey = key;
+  return key;
+}
 
 export async function getToken(creds: AscCredentials): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
@@ -26,7 +50,7 @@ export async function getToken(creds: AscCredentials): Promise<string> {
     return cachedToken.token;
   }
 
-  const privateKey = await importKey(creds.privateKeyPem);
+  const privateKey = await resolveSigningKey(creds);
 
   const token = await new SignJWT({})
     .setProtectedHeader({ alg: "ES256", kid: creds.keyId, typ: "JWT" })
@@ -46,15 +70,29 @@ export async function getToken(creds: AscCredentials): Promise<string> {
 
 export function clearTokenCache() {
   cachedToken = null;
+  cachedKey = null;
+}
+
+/** Import a .p8 and persist it as a non-extractable key. Returns nothing readable. */
+export async function storePrivateKey(pem: string): Promise<void> {
+  const key = await importPrivateKey(pem);
+  await saveKey(key);
+  clearTokenCache();
+}
+
+/** Remove the signing key from this device. */
+export async function destroyPrivateKey(): Promise<void> {
+  await deleteKey();
+  clearTokenCache();
 }
 
 /**
- * Import an EC P-256 private key from PEM (PKCS#8 or SEC1) or raw base64.
+ * Import an EC P-256 private key from PEM (PKCS#8 or SEC1) or raw base64,
+ * always as a NON-EXTRACTABLE CryptoKey (jose defaults extractable=false,
+ * and the SEC1 path passes false explicitly).
  * Apple .p8 files are PKCS#8, but some tools/exports use SEC1 format.
- * jose's importPKCS8 only accepts PKCS#8, so we handle SEC1 separately
- * by going through WebCrypto's native PKCS#8 import after converting.
  */
-async function importKey(input: string): Promise<CryptoKey> {
+export async function importPrivateKey(input: string): Promise<CryptoKey> {
   const cleaned = input.replace(/^\xEF\xBB\xBF/, "").replace(/\r\n/g, "\n").trim();
 
   if (cleaned.startsWith("-----BEGIN EC PRIVATE KEY-----")) {
