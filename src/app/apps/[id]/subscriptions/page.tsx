@@ -310,9 +310,12 @@ export default function SubscriptionsPage() {
         const batch = importPreview.slice(i, i + BATCH);
         await Promise.all(
           batch.map(async (row) => {
-            // Delete ALL existing prices for this territory (current + any scheduled)
+            // Apple only allows deleting FUTURE scheduled prices — current and
+            // historical entries 409. Cancel pending scheduled changes for this
+            // territory, then POST the new price (it supersedes the current one).
             const existing = currentByTerritory.get(row.territoryId) ?? [];
             for (const e of existing) {
+              if (!e.startDate || e.startDate <= today) continue;
               await ascFetch(credentials, `/v1/subscriptionPrices/${e.priceId}`, {
                 method: "DELETE",
               });
