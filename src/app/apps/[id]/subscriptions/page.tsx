@@ -169,9 +169,14 @@ export default function SubscriptionsPage() {
     }
   }, [selectedSubId, loadPrices]);
 
+  // A territory can have multiple entries (current price + scheduled future price)
   const currentByTerritory = useMemo(() => {
-    const m = new Map<string, SubPriceRow>();
-    for (const r of currentPrices) m.set(r.territoryId, r);
+    const m = new Map<string, SubPriceRow[]>();
+    for (const r of currentPrices) {
+      const arr = m.get(r.territoryId) ?? [];
+      arr.push(r);
+      m.set(r.territoryId, arr);
+    }
     return m;
   }, [currentPrices]);
 
@@ -229,7 +234,7 @@ export default function SubscriptionsPage() {
           return {
             territoryId: row.territoryId,
             currency: territoriesMap.get(row.territoryId) ?? "",
-            currentPrice: currentByTerritory.get(row.territoryId)?.customerPrice ?? null,
+            currentPrice: currentByTerritory.get(row.territoryId)?.[0]?.customerPrice ?? null,
             requested: row.price,
             snappedPrice,
             pointId: snapped.id,
@@ -264,10 +269,10 @@ export default function SubscriptionsPage() {
         const batch = importPreview.slice(i, i + BATCH);
         await Promise.all(
           batch.map(async (row) => {
-            const existing = currentByTerritory.get(row.territoryId);
-            // Delete existing price for this territory first
-            if (existing) {
-              await ascFetch(credentials, `/v1/subscriptionPrices/${existing.priceId}`, {
+            // Delete ALL existing prices for this territory (current + any scheduled)
+            const existing = currentByTerritory.get(row.territoryId) ?? [];
+            for (const e of existing) {
+              await ascFetch(credentials, `/v1/subscriptionPrices/${e.priceId}`, {
                 method: "DELETE",
               });
             }
@@ -570,7 +575,7 @@ export default function SubscriptionsPage() {
                   </thead>
                   <tbody>
                     {filteredPrices.map((r) => (
-                      <tr key={r.territoryId} className="border-t border-zinc-800/60">
+                      <tr key={r.priceId} className="border-t border-zinc-800/60">
                         <td className="px-4 py-2 font-mono text-zinc-300">{r.territoryId}</td>
                         <td className="px-4 py-2 text-zinc-500">{r.currency}</td>
                         <td className="px-4 py-2 font-mono">{formatPrice(r.customerPrice, r.currency)}</td>
