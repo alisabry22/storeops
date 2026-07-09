@@ -62,6 +62,7 @@ function resolvePrices(
       customerPrice: point.attributes.customerPrice,
       priceId: price.id,
       pricePointId: point.id,
+      startDate: price.attributes.startDate,
     });
   }
   return rows;
@@ -169,7 +170,34 @@ export default function SubscriptionsPage() {
     }
   }, [selectedSubId, loadPrices]);
 
-  // A territory can have multiple entries (current price + scheduled future price)
+  const today = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
+
+  // Split all price rows into active (startDate <= today or null) vs upcoming (startDate > today)
+  const { activePrices, upcomingPrices } = useMemo(() => {
+    const active: SubPriceRow[] = [];
+    const upcoming: SubPriceRow[] = [];
+    for (const r of currentPrices) {
+      if (r.startDate && r.startDate > today) {
+        upcoming.push(r);
+      } else {
+        active.push(r);
+      }
+    }
+    // For active: per territory keep the one with the latest startDate
+    const byTerritory = new Map<string, SubPriceRow>();
+    for (const r of active) {
+      const existing = byTerritory.get(r.territoryId);
+      if (!existing || (r.startDate ?? "") > (existing.startDate ?? "")) {
+        byTerritory.set(r.territoryId, r);
+      }
+    }
+    return {
+      activePrices: [...byTerritory.values()].sort((a, b) => a.territoryId.localeCompare(b.territoryId)),
+      upcomingPrices: upcoming.sort((a, b) => a.territoryId.localeCompare(b.territoryId)),
+    };
+  }, [currentPrices, today]);
+
+  // currentByTerritory indexes active prices only — used for DELETE on apply
   const currentByTerritory = useMemo(() => {
     const m = new Map<string, SubPriceRow[]>();
     for (const r of currentPrices) {
@@ -234,7 +262,7 @@ export default function SubscriptionsPage() {
           return {
             territoryId: row.territoryId,
             currency: territoriesMap.get(row.territoryId) ?? "",
-            currentPrice: currentByTerritory.get(row.territoryId)?.[0]?.customerPrice ?? null,
+            currentPrice: activePrices.find((r) => r.territoryId === row.territoryId)?.customerPrice ?? null,
             requested: row.price,
             snappedPrice,
             pointId: snapped.id,
@@ -312,7 +340,7 @@ export default function SubscriptionsPage() {
   }
 
   function exportCsv() {
-    const rows = currentPrices.map((r) => ({
+    const rows = activePrices.map((r) => ({
       territoryId: r.territoryId,
       currency: r.currency,
       customerPrice: r.customerPrice,
@@ -329,7 +357,7 @@ export default function SubscriptionsPage() {
   }
 
   async function copyAiPrompt() {
-    const rows = currentPrices.map((r) => ({
+    const rows = activePrices.map((r) => ({
       territoryId: r.territoryId,
       currency: r.currency,
       customerPrice: r.customerPrice,
@@ -339,11 +367,17 @@ export default function SubscriptionsPage() {
     setTimeout(() => setCopiedPrompt(false), 2000);
   }
 
-  const filteredPrices = useMemo(() => {
+  const filteredActive = useMemo(() => {
     const q = search.trim().toUpperCase();
-    if (!q) return currentPrices;
-    return currentPrices.filter((r) => r.territoryId.includes(q) || r.currency.includes(q));
-  }, [currentPrices, search]);
+    if (!q) return activePrices;
+    return activePrices.filter((r) => r.territoryId.includes(q) || r.currency.includes(q));
+  }, [activePrices, search]);
+
+  const filteredUpcoming = useMemo(() => {
+    const q = search.trim().toUpperCase();
+    if (!q) return upcomingPrices;
+    return upcomingPrices.filter((r) => r.territoryId.includes(q) || r.currency.includes(q));
+  }, [upcomingPrices, search]);
 
   const selectedSub = subscriptions.find((s) => s.id === selectedSubId);
 
@@ -409,14 +443,14 @@ export default function SubscriptionsPage() {
               <div className="flex gap-2">
                 <button
                   onClick={exportCsv}
-                  disabled={currentPrices.length === 0}
+                  disabled={activePrices.length === 0}
                   className="text-xs rounded-md border border-zinc-700 px-3 py-1.5 text-zinc-300 hover:border-zinc-500 disabled:opacity-40 transition"
                 >
                   ↓ Export current CSV
                 </button>
                 <button
                   onClick={copyAiPrompt}
-                  disabled={currentPrices.length === 0}
+                  disabled={activePrices.length === 0}
                   className="text-xs rounded-md border border-emerald-800 px-3 py-1.5 text-emerald-400 hover:border-emerald-600 disabled:opacity-40 transition"
                 >
                   {copiedPrompt ? "Copied ✓" : "⧉ Copy AI prompt + my prices"}
@@ -534,10 +568,10 @@ export default function SubscriptionsPage() {
             )}
           </div>
 
-          {/* Current prices */}
+          {/* Prices header + search */}
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold">
-              Current prices
+              Prices
               {selectedSub && (
                 <span className="ml-2 text-zinc-500 font-normal text-sm">
                   {selectedSub.attributes.name} · {formatPeriod(selectedSub.attributes.subscriptionPeriod)}
@@ -562,7 +596,41 @@ export default function SubscriptionsPage() {
             </p>
           )}
 
-          {!loadingPrices && currentPrices.length > 0 && (
+          {/* Upcoming scheduled prices */}
+          {!loadingPrices && filteredUpcoming.length > 0 && (
+            <div className="mb-6">
+              <p className="text-sm font-medium text-amber-400 mb-2">
+                Upcoming price changes ({upcomingPrices.length} territories)
+              </p>
+              <div className="rounded-xl border border-amber-900/50 overflow-hidden">
+                <div className="max-h-48 overflow-y-auto">
+                  <table className="w-full text-sm">
+                    <thead className="sticky top-0 bg-zinc-900">
+                      <tr className="text-left text-zinc-400">
+                        <th className="px-4 py-2 font-medium">Territory</th>
+                        <th className="px-4 py-2 font-medium">Currency</th>
+                        <th className="px-4 py-2 font-medium">New Price</th>
+                        <th className="px-4 py-2 font-medium">Effective</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredUpcoming.map((r) => (
+                        <tr key={r.priceId} className="border-t border-zinc-800/60">
+                          <td className="px-4 py-2 font-mono text-zinc-300">{r.territoryId}</td>
+                          <td className="px-4 py-2 text-zinc-500">{r.currency}</td>
+                          <td className="px-4 py-2 font-mono">{formatPrice(r.customerPrice, r.currency)}</td>
+                          <td className="px-4 py-2 text-xs text-amber-400">{r.startDate}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Current active prices */}
+          {!loadingPrices && activePrices.length > 0 && (
             <div className="rounded-xl border border-zinc-800 overflow-hidden">
               <div className="max-h-96 overflow-y-auto">
                 <table className="w-full text-sm">
@@ -570,15 +638,17 @@ export default function SubscriptionsPage() {
                     <tr className="text-left text-zinc-400">
                       <th className="px-4 py-2 font-medium">Territory</th>
                       <th className="px-4 py-2 font-medium">Currency</th>
-                      <th className="px-4 py-2 font-medium">Price</th>
+                      <th className="px-4 py-2 font-medium">Current Price</th>
+                      <th className="px-4 py-2 font-medium">Since</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredPrices.map((r) => (
+                    {filteredActive.map((r) => (
                       <tr key={r.priceId} className="border-t border-zinc-800/60">
                         <td className="px-4 py-2 font-mono text-zinc-300">{r.territoryId}</td>
                         <td className="px-4 py-2 text-zinc-500">{r.currency}</td>
                         <td className="px-4 py-2 font-mono">{formatPrice(r.customerPrice, r.currency)}</td>
+                        <td className="px-4 py-2 text-xs text-zinc-500">{r.startDate ?? "Starting price"}</td>
                       </tr>
                     ))}
                   </tbody>

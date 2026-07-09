@@ -141,6 +141,7 @@ export interface SubPriceRow {
   customerPrice: string;
   priceId: string;       // existing subscriptionPrices resource id (for DELETE)
   pricePointId: string;
+  startDate: string | null; // null = "Starting Price" (original), date string = when this price became/becomes active
 }
 
 const PERIOD_LABELS: Record<string, string> = {
