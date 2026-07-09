@@ -54,27 +54,41 @@ export async function ascFetch<T = unknown>(
     params?: Record<string, string>;
   } = {}
 ): Promise<T> {
-  const token = await getToken(creds);
   const url = new URL(PROXY_BASE + path, window.location.origin);
   for (const [k, v] of Object.entries(options.params ?? {})) {
     url.searchParams.set(k, v);
   }
 
-  await queue.acquire();
-  try {
-    const res = await fetch(url.toString(), {
-      method: options.method ?? "GET",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        ...(options.body ? { "Content-Type": "application/json" } : {}),
-      },
-      body: options.body ? JSON.stringify(options.body) : undefined,
-    });
+  const MAX_ATTEMPTS = 5;
+  for (let attempt = 0; ; attempt++) {
+    const token = await getToken(creds);
+    await queue.acquire();
+    let res: Response;
+    try {
+      res = await fetch(url.toString(), {
+        method: options.method ?? "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          ...(options.body ? { "Content-Type": "application/json" } : {}),
+        },
+        body: options.body ? JSON.stringify(options.body) : undefined,
+      });
+    } finally {
+      // Release before any backoff sleep — holding a slot while sleeping
+      // deadlocks the queue when every active request is retrying.
+      queue.release();
+    }
 
-    if (res.status === 429) {
-      // Rate limited — back off and retry once
-      await new Promise((r) => setTimeout(r, 5000));
-      return ascFetch(creds, path, options);
+    // 429: not processed, safe to retry anything. 5xx: retry GETs only
+    // (a retried POST could double-apply a write).
+    const retryable =
+      res.status === 429 ||
+      (res.status >= 500 && (options.method ?? "GET") === "GET");
+    if (retryable && attempt < MAX_ATTEMPTS - 1) {
+      const retryAfter = Number(res.headers.get("Retry-After"));
+      const backoff = retryAfter > 0 ? retryAfter * 1000 : 2000 * 2 ** attempt;
+      await new Promise((r) => setTimeout(r, backoff));
+      continue;
     }
 
     if (!res.ok) {
@@ -92,8 +106,6 @@ export async function ascFetch<T = unknown>(
 
     if (res.status === 204) return undefined as T;
     return (await res.json()) as T;
-  } finally {
-    queue.release();
   }
 }
 
@@ -120,8 +132,8 @@ export async function ascFetchAllFull<T, I = unknown>(
   const included: I[] = [];
   let next: string | null = path;
   let nextParams: Record<string, string> | undefined = {
-    ...params,
     limit: "200",
+    ...params, // callers may override limit (price-point endpoints allow 8000)
   };
 
   while (next) {

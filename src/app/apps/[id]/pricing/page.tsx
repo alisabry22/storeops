@@ -38,8 +38,10 @@ interface ImportRow {
   note: string | null;
 }
 
-// Price points rarely change — cache per app+territory for the session.
-const pricePointCache = new Map<string, AppPricePoint[]>();
+// Bulk import path: ALL territories' price points in one paginated pull
+// (limit=8000) instead of 175 per-territory bursts that trip Apple's 429s.
+// Price points rarely change — cached for the session.
+const allPointsCache = new Map<string, Map<string, AppPricePoint[]>>();
 
 function formatPrice(price: string, currency: string): string {
   const n = Number(price);
@@ -394,19 +396,25 @@ export default function PricingPage() {
     }
   }
 
-  async function getPointsForTerritory(
-    territoryId: string
-  ): Promise<AppPricePoint[]> {
-    const key = `${id}:${territoryId}`;
-    const cached = pricePointCache.get(key);
+  /** Fetch ALL price points for the app in one paginated pull, grouped by territory. */
+  async function loadAllPricePoints(): Promise<Map<string, AppPricePoint[]>> {
+    const cached = allPointsCache.get(id);
     if (cached) return cached;
     const { data } = await ascFetchAllFull<AppPricePoint>(
       credentials!,
       `/v1/apps/${id}/appPricePoints`,
-      { "filter[territory]": territoryId }
+      { include: "territory", limit: "8000" }
     );
-    pricePointCache.set(key, data);
-    return data;
+    const byTerritory = new Map<string, AppPricePoint[]>();
+    for (const p of data) {
+      const terrRef = p.relationships?.territory?.data;
+      if (!terrRef || Array.isArray(terrRef)) continue;
+      const arr = byTerritory.get(terrRef.id) ?? [];
+      arr.push(p);
+      byTerritory.set(terrRef.id, arr);
+    }
+    allPointsCache.set(id, byTerritory);
+    return byTerritory;
   }
 
   async function buildImportPreview() {
@@ -435,34 +443,32 @@ export default function PricingPage() {
     }
 
     setImportProgress({ done: 0, total: valid.length });
-    let done = 0;
     try {
-      const resolved = await Promise.all(
-        valid.map(async (row) => {
-          const points = await getPointsForTerritory(row.territoryId);
-          done++;
-          setImportProgress({ done, total: valid.length });
-          const point = snapToPricePoint(points, row.price);
-          if (!point) {
-            allWarnings.push(
-              `${row.territoryId}: no price points available — skipped`
-            );
-            return null;
-          }
-          const snapped = point.attributes.customerPrice;
-          const wasSnapped = Number(snapped) !== row.price;
-          return {
-            territoryId: row.territoryId,
-            currency: territoriesMap.get(row.territoryId) ?? "",
-            currentPrice:
-              currentByTerritory.get(row.territoryId)?.customerPrice ?? null,
-            requested: row.price,
-            snappedPrice: snapped,
-            pointId: point.id,
-            note: wasSnapped ? `snapped from ${row.price}` : null,
-          } satisfies ImportRow;
-        })
-      );
+      // One bulk fetch for every territory's price points (cached per app)
+      const pointsByTerritory = await loadAllPricePoints();
+
+      const resolved = valid.map((row) => {
+        const points = pointsByTerritory.get(row.territoryId) ?? [];
+        const point = snapToPricePoint(points, row.price);
+        if (!point) {
+          allWarnings.push(
+            `${row.territoryId}: no price points available — skipped`
+          );
+          return null;
+        }
+        const snapped = point.attributes.customerPrice;
+        const wasSnapped = Number(snapped) !== row.price;
+        return {
+          territoryId: row.territoryId,
+          currency: territoriesMap.get(row.territoryId) ?? "",
+          currentPrice:
+            currentByTerritory.get(row.territoryId)?.customerPrice ?? null,
+          requested: row.price,
+          snappedPrice: snapped,
+          pointId: point.id,
+          note: wasSnapped ? `snapped from ${row.price}` : null,
+        } satisfies ImportRow;
+      });
       setImportPreview(
         resolved
           .filter((r): r is ImportRow => r !== null)
@@ -651,7 +657,9 @@ export default function PricingPage() {
             className="rounded-md bg-zinc-100 text-zinc-950 px-4 py-2 text-sm font-semibold hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition"
           >
             {importProgress
-              ? `Validating ${importProgress.done}/${importProgress.total} territories…`
+              ? allPointsCache.has(id)
+                ? "Snapping prices…"
+                : "Loading Apple price tiers (one-time)…"
               : "Preview import"}
           </button>
           {importPreview && (

@@ -27,7 +27,10 @@ interface SubImportRow {
   note: string | null;
 }
 
-const pricePointCache = new Map<string, SubscriptionPricePoint[]>();
+// One bulk fetch per subscription: all price points for ALL territories
+// (~18 pages at limit=8000) instead of 175 per-territory request bursts
+// that trip Apple's rate limiter. Cached for the session.
+const allPointsCache = new Map<string, Map<string, SubscriptionPricePoint[]>>();
 
 function formatPrice(price: string, currency: string): string {
   const n = Number(price);
@@ -208,17 +211,25 @@ export default function SubscriptionsPage() {
     return m;
   }, [currentPrices]);
 
-  async function getPricePoints(territoryId: string): Promise<SubscriptionPricePoint[]> {
-    const key = `${selectedSubId}:${territoryId}`;
-    const cached = pricePointCache.get(key);
+  /** Fetch ALL price points for the subscription in one paginated pull, grouped by territory. */
+  async function loadAllPricePoints(): Promise<Map<string, SubscriptionPricePoint[]>> {
+    const cached = allPointsCache.get(selectedSubId);
     if (cached) return cached;
     const { data } = await ascFetchAllFull<SubscriptionPricePoint>(
       credentials!,
       `/v1/subscriptions/${selectedSubId}/pricePoints`,
-      { "filter[territory]": territoryId }
+      { include: "territory", limit: "8000" }
     );
-    pricePointCache.set(key, data);
-    return data;
+    const byTerritory = new Map<string, SubscriptionPricePoint[]>();
+    for (const p of data) {
+      const terrRef = p.relationships?.territory?.data;
+      if (!terrRef || Array.isArray(terrRef)) continue;
+      const arr = byTerritory.get(terrRef.id) ?? [];
+      arr.push(p);
+      byTerritory.set(terrRef.id, arr);
+    }
+    allPointsCache.set(selectedSubId, byTerritory);
+    return byTerritory;
   }
 
   async function buildImportPreview() {
@@ -245,31 +256,33 @@ export default function SubscriptionsPage() {
     }
 
     setImportProgress({ done: 0, total: valid.length });
-    let done = 0;
     try {
-      const resolved = await Promise.all(
-        valid.map(async (row) => {
-          const points = await getPricePoints(row.territoryId);
-          done++;
-          setImportProgress({ done, total: valid.length });
-          const snapped = snapToPricePoint(points, row.price);
-          if (!snapped) {
-            allWarnings.push(`${row.territoryId}: no price points available — skipped`);
-            return null;
-          }
-          const snappedPrice = snapped.attributes.customerPrice;
-          const wasSnapped = Number(snappedPrice) !== row.price;
-          return {
-            territoryId: row.territoryId,
-            currency: territoriesMap.get(row.territoryId) ?? "",
-            currentPrice: activePrices.find((r) => r.territoryId === row.territoryId)?.customerPrice ?? null,
-            requested: row.price,
-            snappedPrice,
-            pointId: snapped.id,
-            note: wasSnapped ? `snapped from ${row.price}` : null,
-          } satisfies SubImportRow;
-        })
-      );
+      // One bulk fetch for every territory's price points (cached per subscription)
+      const pointsByTerritory = await loadAllPricePoints();
+
+      const resolved = valid.map((row) => {
+        const points = pointsByTerritory.get(row.territoryId);
+        if (!points || points.length === 0) {
+          allWarnings.push(`${row.territoryId}: no price points available — skipped`);
+          return null;
+        }
+        const snapped = snapToPricePoint(points, row.price);
+        if (!snapped) {
+          allWarnings.push(`${row.territoryId}: no price points available — skipped`);
+          return null;
+        }
+        const snappedPrice = snapped.attributes.customerPrice;
+        const wasSnapped = Number(snappedPrice) !== row.price;
+        return {
+          territoryId: row.territoryId,
+          currency: territoriesMap.get(row.territoryId) ?? "",
+          currentPrice: activePrices.find((r) => r.territoryId === row.territoryId)?.customerPrice ?? null,
+          requested: row.price,
+          snappedPrice,
+          pointId: snapped.id,
+          note: wasSnapped ? `snapped from ${row.price}` : null,
+        } satisfies SubImportRow;
+      });
       setImportPreview(
         resolved
           .filter((r): r is SubImportRow => r !== null)
@@ -495,7 +508,9 @@ export default function SubscriptionsPage() {
                 className="rounded-md bg-zinc-100 text-zinc-950 px-4 py-2 text-sm font-semibold hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition"
               >
                 {importProgress
-                  ? `Validating ${importProgress.done}/${importProgress.total}…`
+                  ? allPointsCache.has(selectedSubId)
+                    ? "Snapping prices…"
+                    : "Loading Apple price tiers (one-time per subscription)…"
                   : "Preview import"}
               </button>
 
