@@ -366,22 +366,40 @@ export default function SubscriptionsPage() {
           const startDate = hasCurrent
             ? new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)
             : null;
-          await ascFetch(credentials, `/v1/subscriptionPrices`, {
-            method: "POST",
-            body: {
-              data: {
-                type: "subscriptionPrices",
-                attributes: {
-                  startDate,
-                },
-                relationships: {
-                  subscription: { data: { type: "subscriptions", id: selectedSubId } },
-                  subscriptionPricePoint: { data: { type: "subscriptionPricePoints", id: row.pointId } },
-                  territory: { data: { type: "territories", id: row.territoryId } },
-                },
+          // Post the new price. If Apple rejects the startDate as "too early"
+          // (timezone boundary: our UTC tomorrow is still Apple's today), parse
+          // the minimum date from the error and retry once with it.
+          const subPriceBody = (date: string | null) => ({
+            data: {
+              type: "subscriptionPrices",
+              attributes: { startDate: date },
+              relationships: {
+                subscription: { data: { type: "subscriptions", id: selectedSubId } },
+                subscriptionPricePoint: { data: { type: "subscriptionPricePoints", id: row.pointId } },
+                territory: { data: { type: "territories", id: row.territoryId } },
               },
             },
           });
+          try {
+            await ascFetch(credentials, `/v1/subscriptionPrices`, {
+              method: "POST",
+              body: subPriceBody(startDate),
+            });
+          } catch (postErr) {
+            if (postErr instanceof AscError && postErr.status === 409 && startDate !== null) {
+              const match = postErr.detail.match(/on or after (\d{4}-\d{2}-\d{2})/);
+              if (match) {
+                await ascFetch(credentials, `/v1/subscriptionPrices`, {
+                  method: "POST",
+                  body: subPriceBody(match[1]),
+                });
+              } else {
+                throw postErr;
+              }
+            } else {
+              throw postErr;
+            }
+          }
           done++;
           setApplying({ done, total: rows.length });
         })
