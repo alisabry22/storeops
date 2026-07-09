@@ -6,6 +6,8 @@ import { useParams, useRouter } from "next/navigation";
 import { useCredentials } from "@/lib/store";
 import { ascFetch, ascFetchAll } from "@/lib/asc/client";
 import { AppTabs } from "@/components/AppTabs";
+import { PaywallModal } from "@/components/Paywall";
+import { useIsPro } from "@/lib/license";
 import {
   VERSION_FIELDS,
   type AppStoreVersion,
@@ -38,6 +40,8 @@ export default function MetadataEditorPage() {
   const [saveLog, setSaveLog] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [hydrated, setHydrated] = useState(false);
+  const isPro = useIsPro();
+  const [paywallOpen, setPaywallOpen] = useState(false);
 
   useEffect(() => setHydrated(true), []);
 
@@ -235,14 +239,14 @@ export default function MetadataEditorPage() {
             </div>
 
             <button
-              onClick={saveAll}
+              onClick={() => (isPro ? saveAll() : setPaywallOpen(true))}
               disabled={!versionEditable || dirtyCount === 0 || saving}
               className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed transition"
             >
               {saving
                 ? "Saving…"
                 : dirtyCount > 0
-                  ? `Save ${dirtyCount} change${dirtyCount > 1 ? "s" : ""}`
+                  ? `${isPro ? "" : "🔒 "}Save ${dirtyCount} change${dirtyCount > 1 ? "s" : ""}`
                   : "No changes"}
             </button>
           </div>
@@ -344,6 +348,8 @@ export default function MetadataEditorPage() {
           )}
         </>
       )}
+
+      <PaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
     </main>
   );
 }

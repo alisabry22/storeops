@@ -6,6 +6,10 @@ import { useParams, useRouter } from "next/navigation";
 import { useCredentials } from "@/lib/store";
 import { ascFetch, ascFetchAllFull } from "@/lib/asc/client";
 import { AppTabs } from "@/components/AppTabs";
+import { PaywallModal } from "@/components/Paywall";
+import { SnapshotPanel } from "@/components/SnapshotPanel";
+import { useIsPro } from "@/lib/license";
+import { takeSnapshot, type PriceSnapshot } from "@/lib/snapshots";
 import { buildAiPrompt, buildCsv, parsePriceSheet, snapToPricePoint } from "@/lib/pricing-import";
 import type {
   Subscription,
@@ -96,6 +100,11 @@ export default function SubscriptionsPage() {
   const [applying, setApplying] = useState<{ done: number; total: number } | null>(null);
   const [applied, setApplied] = useState(false);
   const [copiedPrompt, setCopiedPrompt] = useState(false);
+
+  // Pro gate + snapshots
+  const isPro = useIsPro();
+  const [paywallOpen, setPaywallOpen] = useState(false);
+  const [snapRefresh, setSnapRefresh] = useState(0);
 
   useEffect(() => setHydrated(true), []);
 
@@ -296,57 +305,102 @@ export default function SubscriptionsPage() {
     }
   }
 
+  /** Save current active prices locally before any write — the undo button. */
+  function snapshotBeforeApply(label: string) {
+    if (activePrices.length === 0 || !selectedSubId) return;
+    takeSnapshot({
+      appId: id,
+      scope: `sub:${selectedSubId}`,
+      label,
+      rows: activePrices.map((r) => ({
+        territoryId: r.territoryId,
+        pricePointId: r.pricePointId,
+        customerPrice: r.customerPrice,
+        currency: r.currency,
+      })),
+    });
+    setSnapRefresh((n) => n + 1);
+  }
+
+  /**
+   * Write prices to Apple: per territory, cancel any FUTURE scheduled price
+   * (current/historical entries 409 on DELETE), then POST the new price.
+   */
+  async function postPrices(
+    rows: Array<{ territoryId: string; pointId: string }>,
+    preserve: boolean
+  ) {
+    if (!credentials || !selectedSubId) return;
+    let done = 0;
+    const BATCH = 4;
+    for (let i = 0; i < rows.length; i += BATCH) {
+      const batch = rows.slice(i, i + BATCH);
+      await Promise.all(
+        batch.map(async (row) => {
+          const existing = currentByTerritory.get(row.territoryId) ?? [];
+          for (const e of existing) {
+            if (!e.startDate || e.startDate <= today) continue;
+            await ascFetch(credentials, `/v1/subscriptionPrices/${e.priceId}`, {
+              method: "DELETE",
+            });
+          }
+          await ascFetch(credentials, `/v1/subscriptionPrices`, {
+            method: "POST",
+            body: {
+              data: {
+                type: "subscriptionPrices",
+                attributes: {
+                  startDate: null,
+                  preserveCurrentLocalizedPrices: preserve,
+                },
+                relationships: {
+                  subscription: { data: { type: "subscriptions", id: selectedSubId } },
+                  subscriptionPricePoint: { data: { type: "subscriptionPricePoints", id: row.pointId } },
+                  territory: { data: { type: "territories", id: row.territoryId } },
+                },
+              },
+            },
+          });
+          done++;
+          setApplying({ done, total: rows.length });
+        })
+      );
+    }
+  }
+
   async function applyImport() {
     if (!credentials || !importPreview || !selectedSubId) return;
     setError("");
     setApplying({ done: 0, total: importPreview.length });
-
-    let done = 0;
-
     try {
-      // Process in batches of 4 (mirrors rate-limit queue)
-      const BATCH = 4;
-      for (let i = 0; i < importPreview.length; i += BATCH) {
-        const batch = importPreview.slice(i, i + BATCH);
-        await Promise.all(
-          batch.map(async (row) => {
-            // Apple only allows deleting FUTURE scheduled prices — current and
-            // historical entries 409. Cancel pending scheduled changes for this
-            // territory, then POST the new price (it supersedes the current one).
-            const existing = currentByTerritory.get(row.territoryId) ?? [];
-            for (const e of existing) {
-              if (!e.startDate || e.startDate <= today) continue;
-              await ascFetch(credentials, `/v1/subscriptionPrices/${e.priceId}`, {
-                method: "DELETE",
-              });
-            }
-            // Create new price
-            await ascFetch(credentials, `/v1/subscriptionPrices`, {
-              method: "POST",
-              body: {
-                data: {
-                  type: "subscriptionPrices",
-                  attributes: {
-                    startDate: null,
-                    preserveCurrentLocalizedPrices: preserveExisting,
-                  },
-                  relationships: {
-                    subscription: { data: { type: "subscriptions", id: selectedSubId } },
-                    subscriptionPricePoint: { data: { type: "subscriptionPricePoints", id: row.pointId } },
-                    territory: { data: { type: "territories", id: row.territoryId } },
-                  },
-                },
-              },
-            });
-            done++;
-            setApplying({ done, total: importPreview.length });
-          })
-        );
-      }
-
+      snapshotBeforeApply(`Before sheet import · ${importPreview.length} territories`);
+      await postPrices(
+        importPreview.map((r) => ({ territoryId: r.territoryId, pointId: r.pointId })),
+        preserveExisting
+      );
       setApplied(true);
       setImportPreview(null);
       setSheetText("");
+      await loadPrices(selectedSubId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setApplying(null);
+    }
+  }
+
+  /** Restore a snapshot: re-POST every territory's old price point. */
+  async function restoreSnapshot(snapshot: PriceSnapshot) {
+    if (!credentials || !selectedSubId) return;
+    setError("");
+    setApplying({ done: 0, total: snapshot.rows.length });
+    try {
+      snapshotBeforeApply("Before restore (auto-safety)");
+      await postPrices(
+        snapshot.rows.map((r) => ({ territoryId: r.territoryId, pointId: r.pricePointId })),
+        true // restoring always protects existing subscribers
+      );
+      setApplied(true);
       await loadPrices(selectedSubId);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -529,13 +583,13 @@ export default function SubscriptionsPage() {
                     Protect existing subscribers (keep their current price)
                   </label>
                   <button
-                    onClick={applyImport}
+                    onClick={() => (isPro ? applyImport() : setPaywallOpen(true))}
                     disabled={applying !== null}
                     className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 disabled:opacity-40 transition"
                   >
                     {applying !== null
                       ? `Applying ${applying.done}/${applying.total}…`
-                      : `Apply ${importPreview.length} prices`}
+                      : `${isPro ? "" : "🔒 "}Apply ${importPreview.length} prices`}
                   </button>
                 </>
               )}
@@ -585,6 +639,15 @@ export default function SubscriptionsPage() {
               </div>
             )}
           </div>
+
+          {/* Snapshots */}
+          <SnapshotPanel
+            appId={id}
+            scope={`sub:${selectedSubId}`}
+            refreshKey={snapRefresh}
+            onRestore={restoreSnapshot}
+            busy={applying !== null}
+          />
 
           {/* Prices header + search */}
           <div className="flex items-center justify-between mb-3">
@@ -676,6 +739,8 @@ export default function SubscriptionsPage() {
           )}
         </>
       )}
+
+      <PaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
     </main>
   );
 }

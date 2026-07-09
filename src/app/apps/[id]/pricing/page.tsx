@@ -6,6 +6,10 @@ import { useParams, useRouter } from "next/navigation";
 import { useCredentials } from "@/lib/store";
 import { AscError, ascFetch, ascFetchAllFull } from "@/lib/asc/client";
 import { AppTabs } from "@/components/AppTabs";
+import { PaywallModal } from "@/components/Paywall";
+import { SnapshotPanel } from "@/components/SnapshotPanel";
+import { useIsPro } from "@/lib/license";
+import { takeSnapshot, type PriceSnapshot } from "@/lib/snapshots";
 import {
   buildAiPrompt,
   buildCsv,
@@ -126,6 +130,11 @@ export default function PricingPage() {
   } | null>(null);
   const [keepExistingManual, setKeepExistingManual] = useState(true);
   const [copiedPrompt, setCopiedPrompt] = useState(false);
+
+  // Pro gate + snapshots
+  const isPro = useIsPro();
+  const [paywallOpen, setPaywallOpen] = useState(false);
+  const [snapRefresh, setSnapRefresh] = useState(0);
 
   useEffect(() => setHydrated(true), []);
 
@@ -334,8 +343,30 @@ export default function PricingPage() {
     setOverrideOpen(null);
   }
 
+  /** Save current prices locally before any write — the undo button. */
+  function snapshotBeforeApply(label: string) {
+    if (currentPrices.length === 0) return;
+    takeSnapshot({
+      appId: id,
+      scope: "app-pricing",
+      label,
+      baseTerritory,
+      rows: currentPrices.map((r) => ({
+        territoryId: r.territoryId,
+        pricePointId: r.pricePointId,
+        customerPrice: r.customerPrice,
+        currency: r.currency,
+        manual: r.manual,
+      })),
+    });
+    setSnapRefresh((n) => n + 1);
+  }
+
   /** POST a full replacement price schedule. `manual[0]` must be the base territory's price. */
-  async function postSchedule(manual: Array<{ pointId: string }>) {
+  async function postSchedule(
+    manual: Array<{ pointId: string }>,
+    base: string = baseTerritory
+  ) {
     if (!credentials) return;
     await ascFetch(credentials, `/v1/appPriceSchedules`, {
       method: "POST",
@@ -345,7 +376,7 @@ export default function PricingPage() {
           relationships: {
             app: { data: { type: "apps", id } },
             baseTerritory: {
-              data: { type: "territories", id: baseTerritory },
+              data: { type: "territories", id: base },
             },
             manualPrices: {
               data: manual.map((_, i) => ({
@@ -380,6 +411,9 @@ export default function PricingPage() {
     setApplying(true);
     setError("");
     try {
+      snapshotBeforeApply(
+        `Before base-price change → ${formatPrice(base.newPrice, base.currency)}`
+      );
       await postSchedule([
         base,
         ...overrides.filter((r) => r.territoryId !== baseTerritory),
@@ -387,6 +421,39 @@ export default function PricingPage() {
       setApplied(true);
       setPreview(null);
       setSelectedPointId("");
+      setNoSchedule(false);
+      await loadCurrent();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setApplying(false);
+    }
+  }
+
+  /** Restore a snapshot: re-POST its manual prices exactly as they were. */
+  async function restoreSnapshot(snapshot: PriceSnapshot) {
+    if (!credentials) return;
+    const base = snapshot.baseTerritory ?? baseTerritory;
+    const baseRow = snapshot.rows.find((r) => r.territoryId === base);
+    if (!baseRow) {
+      setError("Snapshot is missing its base territory — can't restore.");
+      return;
+    }
+    setApplying(true);
+    setError("");
+    try {
+      snapshotBeforeApply("Before restore (auto-safety)");
+      const manualRows = snapshot.rows.filter(
+        (r) => r.manual && r.territoryId !== base
+      );
+      await postSchedule(
+        [
+          { pointId: baseRow.pricePointId },
+          ...manualRows.map((r) => ({ pointId: r.pricePointId })),
+        ],
+        base
+      );
+      setApplied(true);
       setNoSchedule(false);
       await loadCurrent();
     } catch (e) {
@@ -517,6 +584,7 @@ export default function PricingPage() {
         }
       }
 
+      snapshotBeforeApply(`Before sheet import · ${importPreview.length} territories`);
       await postSchedule(manual);
       setApplied(true);
       setImportPreview(null);
@@ -674,13 +742,15 @@ export default function PricingPage() {
                 Keep existing manual prices not in the sheet
               </label>
               <button
-                onClick={applyImport}
+                onClick={() => (isPro ? applyImport() : setPaywallOpen(true))}
                 disabled={applying}
                 className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 disabled:opacity-40 transition"
               >
                 {applying
                   ? "Applying…"
-                  : `Apply ${importPreview.length} prices`}
+                  : isPro
+                    ? `Apply ${importPreview.length} prices`
+                    : `🔒 Apply ${importPreview.length} prices`}
               </button>
             </>
           )}
@@ -778,13 +848,13 @@ export default function PricingPage() {
           </button>
           {preview && (
             <button
-              onClick={applySchedule}
+              onClick={() => (isPro ? applySchedule() : setPaywallOpen(true))}
               disabled={applying}
               className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 disabled:opacity-40 transition"
             >
               {applying
                 ? "Applying…"
-                : `Apply to ${preview.length} territories${overrideCount > 0 ? ` (${overrideCount} overridden)` : ""}`}
+                : `${isPro ? "" : "🔒 "}Apply to ${preview.length} territories${overrideCount > 0 ? ` (${overrideCount} overridden)` : ""}`}
             </button>
           )}
         </div>
@@ -893,6 +963,15 @@ export default function PricingPage() {
         </div>
       )}
 
+      {/* ---- Snapshots ---- */}
+      <SnapshotPanel
+        appId={id}
+        scope="app-pricing"
+        refreshKey={snapRefresh}
+        onRestore={restoreSnapshot}
+        busy={applying}
+      />
+
       {/* ---- Current prices ---- */}
       <div className="flex items-center justify-between mb-3">
         <h2 className="font-semibold">Current prices</h2>
@@ -956,6 +1035,8 @@ export default function PricingPage() {
           </div>
         </div>
       )}
+
+      <PaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
     </main>
   );
 }

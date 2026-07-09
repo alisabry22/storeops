@@ -37,6 +37,8 @@ Then open http://localhost:3000 and connect with your App Store Connect API key
 - [x] Pricing matrix — set base price, preview all ~175 territories (dry run), override individual countries, one-click apply (`appPriceSchedules`)
 - [x] **AI pricing loop** — export current prices as CSV, copy a ready-made AI prompt with your data, paste the AI's repriced CSV back, prices snap to valid Apple price points, diff preview, one apply. Existing manual prices are preserved unless you say otherwise
 - [x] **Subscription pricing** — list all subscriptions, export/import prices per territory with the same AI loop, snap to valid Apple subscription tiers, `preserveCurrentLocalizedPrices` toggle to protect existing subscribers
+- [x] **Snapshots & rollback** — automatic local snapshot before every apply; one-click restore puts prices back exactly as they were
+- [x] **Pro licensing (Lemon Squeezy)** — free tier: browse/preview/export; Pro: all writes. No accounts, no database — buy → license key → activate. Set `NEXT_PUBLIC_LS_CHECKOUT_URL` (see `.env.example`)
 - [ ] MCP server — let AI agents drive StoreOps directly (list apps, read prices, apply sheets)
 - [ ] App name / subtitle editing (`appInfoLocalizations`)
 - [ ] Subscription pricing per territory (`subscriptionPrices`) with preserve-existing-subscribers handling

@@ -153,6 +153,34 @@ export default function SetupPage() {
         App Store Connect API. Role: <strong>App Manager</strong> is enough.
       </p>
 
+      <div className="mt-10 rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
+        <div className="flex items-baseline justify-between mb-3">
+          <h2 className="font-semibold text-sm">Simple pricing</h2>
+          <p className="text-xs text-zinc-500">no account, just a license key</p>
+        </div>
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          <div>
+            <p className="font-semibold text-zinc-200 mb-1.5">Free</p>
+            <ul className="space-y-1 text-xs text-zinc-400">
+              <li>✓ Connect &amp; browse everything</li>
+              <li>✓ Preview every change (dry run)</li>
+              <li>✓ Export prices &amp; AI prompts</li>
+            </ul>
+          </div>
+          <div>
+            <p className="font-semibold text-emerald-400 mb-1.5">Pro</p>
+            <ul className="space-y-1 text-xs text-zinc-400">
+              <li>✓ Every apply — metadata, prices, subs</li>
+              <li>✓ Snapshots &amp; one-click rollback</li>
+              <li>✓ Subscriber-safe subscription repricing</li>
+            </ul>
+          </div>
+        </div>
+        <p className="mt-4 text-xs text-zinc-500">
+          One botched manual price update costs more than a year of StoreOps.
+        </p>
+      </div>
+
       <p className="mt-10 text-center text-xs text-zinc-600">
         Built by an indie dev who got tired of clicking. 🛠
       </p>
