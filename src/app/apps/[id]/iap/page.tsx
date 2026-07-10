@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { useCredentials } from "@/lib/store";
 import { ascFetch, ascFetchAllFull, AscError } from "@/lib/asc/client";
 import { AppTabs } from "@/components/AppTabs";
-import { PaywallModal } from "@/components/Paywall";
+import { PaywallModal, estimateManualMinutes } from "@/components/Paywall";
 import { SnapshotPanel } from "@/components/SnapshotPanel";
 import { TopBar } from "@/components/TopBar";
 import { useIsPro } from "@/lib/license";
@@ -708,7 +708,19 @@ export default function IapPage() {
         </>
       )}
 
-      <PaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
+      <PaywallModal
+        open={paywallOpen}
+        onClose={() => setPaywallOpen(false)}
+        pending={
+          importPreview
+            ? {
+                count: importPreview.length,
+                unit: "IAP price changes",
+                manualMinutes: estimateManualMinutes("price", importPreview.length),
+              }
+            : undefined
+        }
+      />
     </main>
   );
 }

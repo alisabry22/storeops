@@ -12,6 +12,14 @@ export const CHECKOUT_URL =
   process.env.NEXT_PUBLIC_LS_CHECKOUT_URL ??
   "https://storeops.lemonsqueezy.com/checkout"; // set the real one in .env
 
+// Lifetime deal: create a one-time-purchase product in Lemon Squeezy and set
+// NEXT_PUBLIC_LS_LIFETIME_CHECKOUT_URL. Until then, the UI shows yearly only —
+// never advertise a product that can't be bought.
+export const LIFETIME_CHECKOUT_URL =
+  process.env.NEXT_PUBLIC_LS_LIFETIME_CHECKOUT_URL ?? "";
+export const LIFETIME_PRICE = "$69";
+export const YEARLY_PRICE = "$49.99";
+
 interface LicenseState {
   licenseKey: string | null;
   instanceId: string | null;

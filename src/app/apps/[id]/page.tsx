@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useCredentials } from "@/lib/store";
 import { ascFetch, ascFetchAll } from "@/lib/asc/client";
 import { AppTabs } from "@/components/AppTabs";
-import { PaywallModal } from "@/components/Paywall";
+import { PaywallModal, estimateManualMinutes } from "@/components/Paywall";
 import { TopBar } from "@/components/TopBar";
 import { useIsPro } from "@/lib/license";
 import {
@@ -345,7 +345,19 @@ export default function MetadataEditorPage() {
         </>
       )}
 
-      <PaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
+      <PaywallModal
+        open={paywallOpen}
+        onClose={() => setPaywallOpen(false)}
+        pending={
+          dirtyCount > 0
+            ? {
+                count: dirtyCount,
+                unit: "locale updates",
+                manualMinutes: estimateManualMinutes("metadata", dirtyCount),
+              }
+            : undefined
+        }
+      />
     </main>
   );
 }

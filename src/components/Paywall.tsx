@@ -1,7 +1,32 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CHECKOUT_URL, useLicense } from "@/lib/license";
+import {
+  CHECKOUT_URL,
+  LIFETIME_CHECKOUT_URL,
+  LIFETIME_PRICE,
+  YEARLY_PRICE,
+  useLicense,
+} from "@/lib/license";
+
+/** The change the user just tried to apply — their own numbers, not copy. */
+export interface PendingValue {
+  /** How many individual writes this apply performs */
+  count: number;
+  /** What a unit is: "price changes", "locale updates", … */
+  unit: string;
+  /** Honest estimate of doing the same by hand in App Store Connect */
+  manualMinutes: number;
+}
+
+/** Conservative per-unit manual-work estimates for each apply kind. */
+export function estimateManualMinutes(
+  kind: "price" | "subscription" | "metadata",
+  count: number
+): number {
+  const perUnit = { price: 0.5, subscription: 1, metadata: 2 }[kind];
+  return Math.max(5, Math.round(count * perUnit));
+}
 
 /**
  * Upgrade modal: buy on Lemon Squeezy → paste license key → unlocked.
@@ -10,9 +35,11 @@ import { CHECKOUT_URL, useLicense } from "@/lib/license";
 export function PaywallModal({
   open,
   onClose,
+  pending,
 }: {
   open: boolean;
   onClose: () => void;
+  pending?: PendingValue;
 }) {
   const { activate } = useLicense();
   const [key, setKey] = useState("");
@@ -106,37 +133,79 @@ export function PaywallModal({
           </div>
         ) : (
           <>
-            <div className="flex items-baseline justify-between mb-1">
-              <h2 className="text-lg font-bold">
-                Unlock applies with{" "}
-                <span className="text-emerald-400">StoreOps Pro</span>
-              </h2>
-              <p className="text-right">
-                <span className="text-2xl font-bold">$49.99</span>
-                <span className="text-xs text-zinc-500">/yr</span>
-              </p>
-            </div>
-            <p className="text-sm text-zinc-400 mb-4">
-              Free covers browsing, previews, and CSV exports. Writing to
-              Apple — bulk metadata, pricing, subscriptions, one-click
-              rollback — is Pro.
-            </p>
+            {pending ? (
+              <>
+                <h2 className="text-lg font-bold mb-1">
+                  <span className="text-emerald-400">{pending.count} {pending.unit}</span>,
+                  one click away
+                </h2>
+                <div className="mb-4 rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2.5 text-sm">
+                  <div className="flex justify-between text-zinc-400">
+                    <span>By hand in App Store Connect</span>
+                    <span className="font-mono text-zinc-300">
+                      ~{pending.manualMinutes} min
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-zinc-400 mt-1">
+                    <span>With StoreOps Pro</span>
+                    <span className="font-mono text-emerald-400">1 click</span>
+                  </div>
+                </div>
+                <p className="text-sm text-zinc-400 mb-4">
+                  Your preview is ready and nothing has been sent to Apple.
+                  Pro unlocks the apply — this one and every one after it,
+                  with a snapshot saved first so you can always roll back.
+                </p>
+              </>
+            ) : (
+              <>
+                <h2 className="text-lg font-bold mb-1">
+                  Unlock applies with{" "}
+                  <span className="text-emerald-400">StoreOps Pro</span>
+                </h2>
+                <p className="text-sm text-zinc-400 mb-4">
+                  Free covers browsing, previews, and CSV exports. Writing to
+                  Apple — bulk metadata, pricing, subscriptions, one-click
+                  rollback — is Pro.
+                </p>
+                <ul className="text-sm text-zinc-300 space-y-1.5 mb-5">
+                  <li>✓ Bulk apply metadata across every locale</li>
+                  <li>✓ Reprice 175 storefronts in one click</li>
+                  <li>✓ Subscription pricing — existing subscribers stay protected</li>
+                  <li>✓ Pre-apply snapshots + one-click rollback</li>
+                </ul>
+              </>
+            )}
 
-            <ul className="text-sm text-zinc-300 space-y-1.5 mb-5">
-              <li>✓ Bulk apply metadata across every locale</li>
-              <li>✓ Reprice 175 storefronts in one click</li>
-              <li>✓ Subscription pricing — existing subscribers stay protected</li>
-              <li>✓ Pre-apply snapshots + one-click rollback</li>
-            </ul>
-
-            <a
-              href={CHECKOUT_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn-glow block w-full text-center rounded-md bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 transition mb-1.5"
-            >
-              Get Pro → instant license key
-            </a>
+            {LIFETIME_CHECKOUT_URL ? (
+              <div className="space-y-2 mb-1.5">
+                <a
+                  href={LIFETIME_CHECKOUT_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-glow block w-full text-center rounded-md bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 transition"
+                >
+                  Lifetime — {LIFETIME_PRICE} once, own it forever
+                </a>
+                <a
+                  href={CHECKOUT_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block w-full text-center rounded-md border border-emerald-800 px-4 py-2.5 text-sm font-semibold text-emerald-400 hover:border-emerald-500 transition"
+                >
+                  Yearly — {YEARLY_PRICE}/yr
+                </a>
+              </div>
+            ) : (
+              <a
+                href={CHECKOUT_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-glow block w-full text-center rounded-md bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 transition mb-1.5"
+              >
+                Get Pro {YEARLY_PRICE}/yr → instant license key
+              </a>
+            )}
             <p className="text-center text-xs text-zinc-500 mb-4">
               14-day refund · one botched manual price update costs more than this.
             </p>

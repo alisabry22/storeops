@@ -5,7 +5,12 @@ import { useRouter } from "next/navigation";
 import { useCredentials } from "@/lib/store";
 import { ascFetch } from "@/lib/asc/client";
 import { destroyPrivateKey, storePrivateKey } from "@/lib/asc/jwt";
-import { CHECKOUT_URL } from "@/lib/license";
+import {
+  CHECKOUT_URL,
+  LIFETIME_CHECKOUT_URL,
+  LIFETIME_PRICE,
+  YEARLY_PRICE,
+} from "@/lib/license";
 
 const FEATURES = [
   {
@@ -114,15 +119,17 @@ export default function SetupPage() {
           </p>
 
           <h1 className="text-4xl sm:text-5xl font-bold tracking-tight leading-[1.1]">
-            Stop clicking through
+            Update all 175 storefronts
             <br />
-            <span className="text-emerald-400">App Store Connect.</span>
+            <span className="text-emerald-400">in one push.</span>
           </h1>
 
           <p className="mt-5 text-lg text-zinc-400 leading-relaxed">
-            Bulk metadata, worldwide pricing, and subscription repricing for
-            all <span className="text-zinc-200 font-semibold">175 storefronts</span>{" "}
-            — with a dry-run preview and one-click rollback.
+            Pricing, subscriptions, and metadata for App Store Connect — see
+            the exact diff before anything goes live, apply once, roll back
+            anytime. What takes{" "}
+            <span className="text-zinc-200 font-semibold">an afternoon of clicking</span>{" "}
+            takes <span className="text-emerald-400 font-semibold">2 minutes</span>.
           </p>
 
           <ul className="mt-8 space-y-3 text-[15px] text-zinc-300">
@@ -342,7 +349,13 @@ export default function SetupPage() {
         <h2 className="text-2xl font-bold tracking-tight mb-8 text-center">
           Simple pricing. No account, just a license key.
         </h2>
-        <div className="grid gap-4 sm:grid-cols-2 max-w-3xl mx-auto">
+        <div
+          className={`grid gap-4 mx-auto ${
+            LIFETIME_CHECKOUT_URL
+              ? "sm:grid-cols-3 max-w-4xl"
+              : "sm:grid-cols-2 max-w-3xl"
+          }`}
+        >
           <div className="card p-6">
             <p className="font-semibold text-lg mb-1">Free</p>
             <p className="text-3xl font-bold mb-4">
@@ -356,13 +369,46 @@ export default function SetupPage() {
               <li className="text-zinc-500">✗ Applying changes to Apple</li>
             </ul>
           </div>
-          <div className="card card-hero p-6 relative">
-            <span className="absolute -top-3 left-6 rounded-full bg-emerald-500 px-3 py-0.5 text-xs font-semibold text-zinc-950">
-              For shipping devs
-            </span>
+          {LIFETIME_CHECKOUT_URL && (
+            <div className="card card-hero p-6 relative">
+              <span className="absolute -top-3 left-6 rounded-full bg-emerald-500 px-3 py-0.5 text-xs font-semibold text-zinc-950">
+                Pay once, own it
+              </span>
+              <p className="font-semibold text-lg mb-1 text-emerald-400">
+                Lifetime
+              </p>
+              <p className="text-3xl font-bold mb-4">
+                {LIFETIME_PRICE}
+                <span className="text-sm font-normal text-zinc-500"> once</span>
+              </p>
+              <ul className="space-y-2 text-sm text-zinc-300">
+                <li>✓ Everything in Pro, forever</li>
+                <li>✓ All future features included</li>
+                <li>✓ No renewal, no subscription</li>
+                <li>✓ All 175 storefronts, all your apps</li>
+              </ul>
+              <a
+                href={LIFETIME_CHECKOUT_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-glow mt-5 block w-full text-center rounded-md bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 transition"
+              >
+                Get Lifetime
+              </a>
+              <p className="mt-3 text-center text-xs text-zinc-400">
+                <span className="text-emerald-400">14-day refund</span> · one key, all your devices
+              </p>
+            </div>
+          )}
+          <div className={`card p-6 relative ${LIFETIME_CHECKOUT_URL ? "" : "card-hero"}`}>
+            {!LIFETIME_CHECKOUT_URL && (
+              <span className="absolute -top-3 left-6 rounded-full bg-emerald-500 px-3 py-0.5 text-xs font-semibold text-zinc-950">
+                For shipping devs
+              </span>
+            )}
             <p className="font-semibold text-lg mb-1 text-emerald-400">Pro</p>
             <p className="text-3xl font-bold mb-4">
-              $49.99
+              {YEARLY_PRICE}
               <span className="text-sm font-normal text-zinc-500"> /year</span>
             </p>
             <ul className="space-y-2 text-sm text-zinc-300">
@@ -375,7 +421,11 @@ export default function SetupPage() {
               href={CHECKOUT_URL}
               target="_blank"
               rel="noopener noreferrer"
-              className="btn-glow mt-5 block w-full text-center rounded-md bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 transition"
+              className={`mt-5 block w-full text-center rounded-md px-4 py-2.5 text-sm font-semibold transition ${
+                LIFETIME_CHECKOUT_URL
+                  ? "border border-emerald-800 text-emerald-400 hover:border-emerald-500"
+                  : "btn-glow bg-emerald-500 text-zinc-950 hover:bg-emerald-400"
+              }`}
             >
               Get Pro
             </a>
