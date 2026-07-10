@@ -8,4 +8,5 @@ export const SITE_TITLE =
 export const SITE_DESCRIPTION =
   "Bulk-edit App Store metadata, pricing, and subscriptions across all 175 storefronts. AI-powered repricing, dry-run previews, one-click rollback. Your API key never leaves the browser.";
 
+
   
