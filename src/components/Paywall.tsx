@@ -215,7 +215,7 @@ export function PaywallModal({
               </a>
             )}
             <p className="text-center text-xs text-zinc-500 mb-4">
-              14-day refund · one botched manual price update costs more than this.
+              14-day refund · cancel anytime · one key, all your devices.
             </p>
 
             <div className="border-t border-zinc-800 pt-4">

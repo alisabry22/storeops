@@ -8,9 +8,58 @@ import {
   YEARLY_PRICE,
   useCheckoutUrls,
 } from "@/lib/license";
-import { SignInButton, useUser } from "@clerk/nextjs";
+import { SignInButton, SignUpButton, useUser } from "@clerk/nextjs";
 
 const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+
+/**
+ * Store CTA: signed-out visitors get the sign-up modal and land on the
+ * connect page right after; signed-in (or local-mode) users go straight there.
+ */
+function StoreCta({
+  href,
+  label,
+  primary,
+}: {
+  href: string;
+  label: string;
+  primary?: boolean;
+}) {
+  const cls = primary
+    ? "btn-glow block w-full text-center rounded-md bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 transition"
+    : "block w-full text-center rounded-md border border-emerald-800 px-4 py-2.5 text-sm font-semibold text-emerald-400 hover:border-emerald-500 transition";
+  if (!clerkEnabled)
+    return (
+      <Link href={href} className={cls}>
+        {label}
+      </Link>
+    );
+  return <GatedCta href={href} label={label} cls={cls} />;
+}
+
+function GatedCta({
+  href,
+  label,
+  cls,
+}: {
+  href: string;
+  label: string;
+  cls: string;
+}) {
+  const { isSignedIn, isLoaded } = useUser();
+  if (isLoaded && !isSignedIn) {
+    return (
+      <SignUpButton mode="modal" forceRedirectUrl={href}>
+        <button className={`${cls} w-full`}>{label}</button>
+      </SignUpButton>
+    );
+  }
+  return (
+    <Link href={href} className={cls}>
+      {label}
+    </Link>
+  );
+}
 
 function OpenAppLink() {
   return (
@@ -183,18 +232,8 @@ export default function LandingPage() {
           </p>
 
           <div className="space-y-2.5">
-            <Link
-              href="/connect"
-              className="btn-glow block w-full text-center rounded-md bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 transition"
-            >
-               Connect App Store →
-            </Link>
-            <Link
-              href="/play"
-              className="block w-full text-center rounded-md border border-emerald-800 px-4 py-2.5 text-sm font-semibold text-emerald-400 hover:border-emerald-500 transition"
-            >
-              🤖 Connect Google Play →
-            </Link>
+            <StoreCta href="/connect" label=" Connect App Store →" primary />
+            <StoreCta href="/play" label="🤖 Connect Google Play →" />
           </div>
 
           <ul className="mt-5 space-y-1.5 text-xs text-zinc-400 border-t border-zinc-800 pt-4">
@@ -203,11 +242,6 @@ export default function LandingPage() {
             <li>✓ Export CSVs and AI pricing prompts</li>
             <li className="text-zinc-500">Pro unlocks one-click applies</li>
           </ul>
-
-          <p className="mt-4 text-xs text-zinc-500 leading-relaxed">
-            2-minute setup with an API key you create in your own store
-            console — full instructions on the next screen.
-          </p>
         </div>
       </section>
 
@@ -252,7 +286,7 @@ export default function LandingPage() {
           Everything ASC makes painful
         </h2>
         <p className="text-zinc-400 mb-8">
-          Time saved is money in your pocket. That&apos;s the whole product.
+          Diff previews, bulk applies, and rollback — for both stores.
         </p>
         <div className="grid gap-4 sm:grid-cols-2">
           {FEATURES.map((f) => (
@@ -398,9 +432,6 @@ export default function LandingPage() {
             </p>
           </div>
         </div>
-        <p className="mt-6 text-center text-sm text-zinc-500">
-          One botched manual price update costs more than a year of StoreOps.
-        </p>
       </section>
 
       {/* ---------- Footer ---------- */}
