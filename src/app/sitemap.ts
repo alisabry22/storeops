@@ -10,6 +10,9 @@ const FEATURE_PAGES = [
   "/asc-automation",
   "/csv-import",
   "/app-store-connect-pricing",
+  "/google-play-bulk-pricing",
+  "/play-console-pricing",
+  "/cross-platform-app-pricing",
 ];
 
 export default function sitemap(): MetadataRoute.Sitemap {

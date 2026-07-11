@@ -460,6 +460,9 @@ export default function SetupPage() {
             { href: "/asc-automation", label: "ASC Automation" },
             { href: "/csv-import", label: "CSV Import" },
             { href: "/app-store-connect-pricing", label: "ASC Pricing" },
+            { href: "/google-play-bulk-pricing", label: "Play Bulk Pricing" },
+            { href: "/play-console-pricing", label: "Play Console Pricing" },
+            { href: "/cross-platform-app-pricing", label: "Cross-Platform Pricing" },
           ].map((l) => (
             <a
               key={l.href}

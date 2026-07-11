@@ -172,12 +172,13 @@ export function PaywallModal({
                 </h2>
                 <p className="text-sm text-zinc-400 mb-4">
                   Free covers browsing, previews, and CSV exports. Writing to
-                  Apple — bulk metadata, pricing, subscriptions, one-click
+                  the stores — bulk metadata, pricing, subscriptions, one-click
                   rollback — is Pro.
                 </p>
                 <ul className="text-sm text-zinc-300 space-y-1.5 mb-5">
+                  <li>✓ App Store + Google Play — both stores included</li>
                   <li>✓ Bulk apply metadata across every locale</li>
-                  <li>✓ Reprice 175 storefronts in one click</li>
+                  <li>✓ Reprice every storefront in one click</li>
                   <li>✓ Subscription pricing — existing subscribers stay protected</li>
                   <li>✓ Pre-apply snapshots + one-click rollback</li>
                 </ul>
