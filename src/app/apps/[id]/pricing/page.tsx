@@ -11,11 +11,11 @@ import { TopBar } from "@/components/TopBar";
 import { useIsPro } from "@/lib/license";
 import { takeSnapshot, type PriceSnapshot } from "@/lib/snapshots";
 import {
-  buildAiPrompt,
   buildCsv,
   parsePriceSheet,
   snapToPricePoint,
 } from "@/lib/pricing-import";
+import { STRATEGIES, type PricingStrategy, getStrategy } from "@/lib/pricing-strategies";
 import type {
   AppPrice,
   AppPricePoint,
@@ -130,6 +130,7 @@ export default function PricingPage() {
   } | null>(null);
   const [keepExistingManual, setKeepExistingManual] = useState(true);
   const [copiedPrompt, setCopiedPrompt] = useState(false);
+  const [strategy, setStrategy] = useState<PricingStrategy>("ppp");
 
   // Pro gate + snapshots
   const isPro = useIsPro();
@@ -610,9 +611,26 @@ export default function PricingPage() {
   }
 
   async function copyAiPrompt() {
-    await navigator.clipboard.writeText(buildAiPrompt(buildCsv(currentPrices)));
+    await navigator.clipboard.writeText(getStrategy(strategy).buildPrompt(buildCsv(currentPrices)));
     setCopiedPrompt(true);
     setTimeout(() => setCopiedPrompt(false), 2000);
+  }
+
+  function saveNamedSnapshot(label: string) {
+    takeSnapshot({
+      appId: id,
+      scope: "app-pricing",
+      label,
+      baseTerritory,
+      rows: currentPrices.map((r) => ({
+        territoryId: r.territoryId,
+        pricePointId: r.pricePointId,
+        customerPrice: r.customerPrice,
+        currency: r.currency,
+        manual: r.manual,
+      })),
+    });
+    setSnapRefresh((n) => n + 1);
   }
 
   const filteredPrices = useMemo(() => {
@@ -674,15 +692,35 @@ export default function PricingPage() {
               disabled={currentPrices.length === 0}
               className="text-xs rounded-md border border-emerald-800 px-3 py-1.5 text-emerald-400 hover:border-emerald-600 disabled:opacity-40 transition"
             >
-              {copiedPrompt ? "Copied ✓" : "⧉ Copy AI prompt + my prices"}
+              {copiedPrompt ? "Copied ✓" : `⧉ Copy ${getStrategy(strategy).label} prompt`}
             </button>
           </div>
         </div>
-        <p className="text-sm text-zinc-400 mb-3">
+        <p className="text-sm text-zinc-400 mb-2">
           The loop: export → ask ChatGPT/Claude to reprice (PPP, sales,
           rounding — your call) → paste the CSV back here. We snap every price
           to the nearest valid Apple price point and show you the diff first.
         </p>
+
+        {/* AI objective picker */}
+        <div className="flex items-center gap-2 flex-wrap mb-3">
+          <span className="text-xs text-zinc-500 shrink-0">AI objective:</span>
+          {STRATEGIES.map((s) => (
+            <button
+              key={s.key}
+              onClick={() => setStrategy(s.key)}
+              title={s.tagline}
+              className={`text-xs rounded-md px-2.5 py-1 border transition ${
+                strategy === s.key
+                  ? "bg-emerald-900/60 border-emerald-700 text-emerald-300"
+                  : "border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
+              }`}
+            >
+              {s.emoji} {s.label}
+              {s.star && <span className="ml-1 text-amber-400 text-[10px]">★</span>}
+            </button>
+          ))}
+        </div>
         <textarea
           value={sheetText}
           onChange={(e) => {
@@ -969,6 +1007,7 @@ export default function PricingPage() {
         scope="app-pricing"
         refreshKey={snapRefresh}
         onRestore={restoreSnapshot}
+        onSave={saveNamedSnapshot}
         busy={applying}
       />
 

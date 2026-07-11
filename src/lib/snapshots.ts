@@ -92,3 +92,15 @@ export function formatSnapshotDate(iso: string): string {
     return iso;
   }
 }
+
+export function exportSnapshot(snapshot: PriceSnapshot) {
+  const json = JSON.stringify(snapshot, null, 2);
+  const blob = new Blob([json], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  const slug = snapshot.label.replace(/[^a-z0-9]/gi, "-").toLowerCase();
+  a.download = `snapshot-${slug}-${snapshot.createdAt.slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}

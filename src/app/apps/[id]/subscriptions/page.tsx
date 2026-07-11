@@ -10,7 +10,8 @@ import { SnapshotPanel } from "@/components/SnapshotPanel";
 import { TopBar } from "@/components/TopBar";
 import { useIsPro } from "@/lib/license";
 import { takeSnapshot, type PriceSnapshot } from "@/lib/snapshots";
-import { buildAiPrompt, buildCsv, parsePriceSheet, snapToPricePoint } from "@/lib/pricing-import";
+import { buildCsv, parsePriceSheet, snapToPricePoint } from "@/lib/pricing-import";
+import { STRATEGIES, type PricingStrategy, getStrategy } from "@/lib/pricing-strategies";
 import type {
   Subscription,
   SubscriptionGroup,
@@ -99,6 +100,7 @@ export default function SubscriptionsPage() {
   const [applying, setApplying] = useState<{ done: number; total: number } | null>(null);
   const [applied, setApplied] = useState(false);
   const [copiedPrompt, setCopiedPrompt] = useState(false);
+  const [strategy, setStrategy] = useState<PricingStrategy>("ppp");
 
   // Pro gate + snapshots
   const isPro = useIsPro();
@@ -469,9 +471,25 @@ export default function SubscriptionsPage() {
       currency: r.currency,
       customerPrice: r.customerPrice,
     }));
-    await navigator.clipboard.writeText(buildAiPrompt(buildCsv(rows)));
+    await navigator.clipboard.writeText(getStrategy(strategy).buildPrompt(buildCsv(rows)));
     setCopiedPrompt(true);
     setTimeout(() => setCopiedPrompt(false), 2000);
+  }
+
+  function saveNamedSnapshot(label: string) {
+    if (!selectedSubId) return;
+    takeSnapshot({
+      appId: id,
+      scope: `sub:${selectedSubId}`,
+      label,
+      rows: activePrices.map((r) => ({
+        territoryId: r.territoryId,
+        pricePointId: r.pricePointId,
+        customerPrice: r.customerPrice,
+        currency: r.currency,
+      })),
+    });
+    setSnapRefresh((n) => n + 1);
   }
 
   const filteredActive = useMemo(() => {
@@ -592,14 +610,34 @@ export default function SubscriptionsPage() {
                   disabled={activePrices.length === 0}
                   className="text-xs rounded-md border border-emerald-800 px-3 py-1.5 text-emerald-400 hover:border-emerald-600 disabled:opacity-40 transition"
                 >
-                  {copiedPrompt ? "Copied ✓" : "⧉ Copy AI prompt + my prices"}
+                  {copiedPrompt ? "Copied ✓" : `⧉ Copy ${getStrategy(strategy).label} prompt`}
                 </button>
               </div>
             </div>
-            <p className="text-sm text-zinc-400 mb-3">
+            <p className="text-sm text-zinc-400 mb-2">
               Export → reprice with AI → paste back. Prices snap to valid Apple subscription tiers.
               Existing subscribers are protected by default.
             </p>
+
+            {/* AI objective picker */}
+            <div className="flex items-center gap-2 flex-wrap mb-3">
+              <span className="text-xs text-zinc-500 shrink-0">AI objective:</span>
+              {STRATEGIES.map((s) => (
+                <button
+                  key={s.key}
+                  onClick={() => setStrategy(s.key)}
+                  title={s.tagline}
+                  className={`text-xs rounded-md px-2.5 py-1 border transition ${
+                    strategy === s.key
+                      ? "bg-emerald-900/60 border-emerald-700 text-emerald-300"
+                      : "border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
+                  }`}
+                >
+                  {s.emoji} {s.label}
+                  {s.star && <span className="ml-1 text-amber-400 text-[10px]">★</span>}
+                </button>
+              ))}
+            </div>
 
             <textarea
               value={sheetText}
@@ -713,6 +751,7 @@ export default function SubscriptionsPage() {
             scope={`sub:${selectedSubId}`}
             refreshKey={snapRefresh}
             onRestore={restoreSnapshot}
+            onSave={saveNamedSnapshot}
             busy={applying !== null}
           />
 
