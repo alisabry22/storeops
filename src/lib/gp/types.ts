@@ -29,6 +29,32 @@ export interface GpInAppProduct {
   listings?: Record<string, { title?: string; description?: string }>;
 }
 
+/**
+ * New-style monetization one-time product. Apps migrated to Google's new
+ * Publishing API return this shape from /oneTimeProducts and reject the
+ * legacy /inappproducts path with 403 "Please migrate to the new publishing
+ * API". Prices live on `purchaseOptions[].regionalPricingAndAvailabilityConfigs`
+ * as `Money` objects (currencyCode/units/nanos), not as the legacy micros map.
+ */
+export interface GpOneTimeProduct {
+  packageName: string;
+  productId: string;
+  listings?: Array<{ languageCode?: string; title?: string; description?: string }>;
+  purchaseOptions?: Array<{
+    purchaseOptionId: string;
+    state?: string;
+    buyOption?: unknown;
+    regionalPricingAndAvailabilityConfigs?: Array<{
+      regionCode: string;
+      price?: GpMoney;
+      availability?: string;
+    }>;
+    newRegionsConfig?: unknown;
+  }>;
+  offerTags?: Array<{ tag?: string }>;
+  regionsVersion?: { version?: string };
+}
+
 export interface GpRegionalConfig {
   regionCode: string;
   price?: GpMoney;

@@ -18,24 +18,43 @@ import {
   microsToDecimal,
   moneyToDecimal,
   type GpInAppProduct,
+  type GpOneTimeProduct,
   type GpPriceRow,
   type GpSubscription,
 } from "@/lib/gp/types";
 
 const API = "/androidpublisher/v3/applications";
 
+/**
+ * Normalized one-time product. Bridges the legacy /inappproducts shape
+ * (micros, `prices: Record<region, {priceMicros, currency}>`) and the new
+ * /oneTimeProducts shape (Money objects nested under purchaseOptions[].…).
+ * Downstream code only touches `productId`, `title`, and `prices` (already
+ * decimal-normalized). The apply path branches on `legacy` and uses the raw
+ * shape it needs to send back to Google.
+ */
+type IapProduct = {
+  legacy: boolean;
+  productId: string;
+  title: string;
+  prices: GpPriceRow[];
+  purchaseOptionId?: string; // modern only — which purchase option holds the prices
+  legacyRaw?: GpInAppProduct;
+  modernRaw?: GpOneTimeProduct;
+};
+
 /** Unified product selector: one-time products and subscription base plans. */
 type ProductRef =
-  | { kind: "iap"; sku: string; title: string }
+  | { kind: "iap"; productId: string; title: string }
   | { kind: "sub"; productId: string; basePlanId: string; title: string };
 
 function refKey(r: ProductRef): string {
-  return r.kind === "iap" ? `iap:${r.sku}` : `sub:${r.productId}:${r.basePlanId}`;
+  return r.kind === "iap" ? `iap:${r.productId}` : `sub:${r.productId}:${r.basePlanId}`;
 }
 
 function refLabel(r: ProductRef): string {
   return r.kind === "iap"
-    ? `${r.title} · one-time · ${r.sku}`
+    ? `${r.title} · one-time · ${r.productId}`
     : `${r.title} · base plan · ${r.productId}/${r.basePlanId}`;
 }
 
@@ -75,7 +94,7 @@ export default function PlayPage() {
   const [newPackage, setNewPackage] = useState("");
   const [selectedPackage, setSelectedPackage] = useState("");
   const [loadingProducts, setLoadingProducts] = useState(false);
-  const [iaps, setIaps] = useState<GpInAppProduct[]>([]);
+  const [iaps, setIaps] = useState<IapProduct[]>([]);
   const [subs, setSubs] = useState<GpSubscription[]>([]);
   const [selectedRefKey, setSelectedRefKey] = useState("");
 
@@ -103,14 +122,10 @@ export default function PlayPage() {
   const productRefs = useMemo<ProductRef[]>(() => {
     const refs: ProductRef[] = [];
     for (const p of iaps) {
-      if (p.purchaseType === "subscription") continue; // legacy subs — managed in subscriptions API
       refs.push({
         kind: "iap",
-        sku: p.sku,
-        title:
-          p.listings?.[p.defaultLanguage ?? ""]?.title ??
-          Object.values(p.listings ?? {})[0]?.title ??
-          p.sku,
+        productId: p.productId,
+        title: p.title,
       });
     }
     for (const s of subs) {
@@ -133,14 +148,10 @@ export default function PlayPage() {
   const currentPrices = useMemo<GpPriceRow[]>(() => {
     if (!selectedRef) return [];
     if (selectedRef.kind === "iap") {
-      const product = iaps.find((p) => p.sku === selectedRef.sku);
-      if (!product?.prices) return [];
-      return Object.entries(product.prices)
-        .map(([regionCode, p]) => ({
-          regionCode,
-          currency: p.currency,
-          price: microsToDecimal(p.priceMicros),
-        }))
+      const product = iaps.find((p) => p.productId === selectedRef.productId);
+      if (!product) return [];
+      return product.prices
+        .slice()
         .sort((a, b) => a.regionCode.localeCompare(b.regionCode));
     }
     const sub = subs.find((s) => s.productId === selectedRef.productId);
@@ -184,23 +195,94 @@ export default function PlayPage() {
     setIaps([]);
     setSubs([]);
     setSelectedRefKey("");
+
+    // --- One-time products (IAPs) ---
+    // Google migrated apps to a new monetization API. Migrated apps reject
+    // /inappproducts with 403 "Please migrate to the new publishing API" and
+    // expose the data at /oneTimeProducts instead. Try the new endpoint first
+    // and fall back to the legacy path on any error — older apps still on
+    // inappproducts keep working.
+    let iapError = "";
     try {
-      // In-app products (one-time) — token-paginated
-      const allIaps: GpInAppProduct[] = [];
-      let token: string | undefined;
+      const modern: IapProduct[] = [];
+      let pageToken: string | undefined;
       do {
         const page = await gpFetch<{
-          inappproduct?: GpInAppProduct[];
-          tokenPagination?: { nextPageToken?: string };
-        }>(gpCredentials, `${API}/${selectedPackage}/inappproducts`, {
-          params: { maxResults: "1000", ...(token ? { token } : {}) },
+          oneTimeProducts?: GpOneTimeProduct[];
+          nextPageToken?: string;
+        }>(gpCredentials, `${API}/${selectedPackage}/oneTimeProducts`, {
+          params: { pageSize: "100", ...(pageToken ? { pageToken } : {}) },
         });
-        allIaps.push(...(page.inappproduct ?? []));
-        token = page.tokenPagination?.nextPageToken;
-      } while (token);
-      setIaps(allIaps);
+        for (const p of page.oneTimeProducts ?? []) {
+          // Use the first purchase option (most apps have exactly one).
+          // Prices are decimal-normalized here so downstream code never
+          // touches micros or Money conversion directly.
+          const po = p.purchaseOptions?.[0];
+          const priceRows: GpPriceRow[] = (po?.regionalPricingAndAvailabilityConfigs ?? [])
+            .filter((rc) => rc.price)
+            .map((rc) => ({
+              regionCode: rc.regionCode,
+              currency: rc.price!.currencyCode,
+              price: moneyToDecimal(rc.price!),
+            }));
+          modern.push({
+            legacy: false,
+            productId: p.productId,
+            title: p.listings?.[0]?.title ?? p.productId,
+            prices: priceRows,
+            purchaseOptionId: po?.purchaseOptionId,
+            modernRaw: p,
+          });
+        }
+        pageToken = page.nextPageToken;
+      } while (pageToken);
+      setIaps(modern);
+    } catch {
+      // Modern endpoint rejected this app (migrated or older app). Fall back
+      // to the legacy /inappproducts path used by non-migrated apps.
+      try {
+        const legacy: IapProduct[] = [];
+        let token: string | undefined;
+        do {
+          const page = await gpFetch<{
+            inappproduct?: GpInAppProduct[];
+            tokenPagination?: { nextPageToken?: string };
+          }>(gpCredentials, `${API}/${selectedPackage}/inappproducts`, {
+            params: { maxResults: "1000", ...(token ? { token } : {}) },
+          });
+          for (const p of page.inappproduct ?? []) {
+            // Skip legacy subscription-typed entries — managed via /subscriptions.
+            if (p.purchaseType === "subscription") continue;
+            const priceRows: GpPriceRow[] = Object.entries(p.prices ?? {})
+              .map(([regionCode, mp]) => ({
+                regionCode,
+                currency: mp.currency,
+                price: microsToDecimal(mp.priceMicros),
+              }));
+            legacy.push({
+              legacy: true,
+              productId: p.sku,
+              title:
+                p.listings?.[p.defaultLanguage ?? ""]?.title ??
+                Object.values(p.listings ?? {})[0]?.title ??
+                p.sku,
+              prices: priceRows,
+              legacyRaw: p,
+            });
+          }
+          token = page.tokenPagination?.nextPageToken;
+        } while (token);
+        setIaps(legacy);
+      } catch (legacyErr) {
+        iapError =
+          legacyErr instanceof Error ? legacyErr.message : String(legacyErr);
+      }
+    }
 
-      // Subscriptions (base plans hold the regional prices)
+    // --- Subscriptions (base plans hold the regional prices) ---
+    // Independent try/catch so an IAP load failure doesn't hide subscriptions.
+    let subError = "";
+    try {
       const allSubs: GpSubscription[] = [];
       let pageToken: string | undefined;
       do {
@@ -215,10 +297,11 @@ export default function PlayPage() {
       } while (pageToken);
       setSubs(allSubs);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoadingProducts(false);
+      subError = e instanceof Error ? e.message : String(e);
     }
+
+    setError(iapError && subError ? `${iapError}  ·  ${subError}` : iapError || subError);
+    setLoadingProducts(false);
   }, [gpCredentials, selectedPackage]);
 
   useEffect(() => {
@@ -313,23 +396,54 @@ export default function PlayPage() {
         setSnapRefresh((n) => n + 1);
 
         if (selectedRef.kind === "iap") {
-          const product = iaps.find((p) => p.sku === selectedRef.sku);
+          const product = iaps.find((p) => p.productId === selectedRef.productId);
           if (!product) throw new Error("Product not loaded — refresh and retry.");
-          const prices = { ...(product.prices ?? {}) };
-          for (const [region, price] of changes) {
-            const currency = currentByRegion.get(region)?.currency;
-            if (!currency) continue;
-            prices[region] = { priceMicros: decimalToMicros(price), currency };
-          }
-          await gpFetch(
-            gpCredentials,
-            `${API}/${selectedPackage}/inappproducts/${selectedRef.sku}`,
-            {
-              method: "PUT",
-              params: { autoConvertMissingPrices: "true" },
-              body: { ...product, prices },
+
+          if (product.legacy) {
+            // Legacy /inappproducts path — prices are micros on a flat map.
+            if (!product.legacyRaw)
+              throw new Error("Legacy product payload missing — refresh and retry.");
+            const prices = { ...(product.legacyRaw.prices ?? {}) };
+            for (const [region, price] of changes) {
+              const currency = currentByRegion.get(region)?.currency;
+              if (!currency) continue;
+              prices[region] = { priceMicros: decimalToMicros(price), currency };
             }
-          );
+            await gpFetch(
+              gpCredentials,
+              `${API}/${selectedPackage}/inappproducts/${selectedRef.productId}`,
+              {
+                method: "PUT",
+                params: { autoConvertMissingPrices: "true" },
+                body: { ...product.legacyRaw, prices },
+              }
+            );
+          } else {
+            // Modern /oneTimeProducts path — prices are Money objects nested
+            // under purchaseOptions[].regionalPricingAndAvailabilityConfigs.
+            if (!product.modernRaw)
+              throw new Error("Product payload missing — refresh and retry.");
+            const updated: GpOneTimeProduct = JSON.parse(JSON.stringify(product.modernRaw));
+            const po = (updated.purchaseOptions ?? []).find(
+              (p) => p.purchaseOptionId === product.purchaseOptionId
+            ) ?? updated.purchaseOptions?.[0];
+            if (!po?.regionalPricingAndAvailabilityConfigs)
+              throw new Error("Purchase option has no regional price configs.");
+            po.regionalPricingAndAvailabilityConfigs =
+              po.regionalPricingAndAvailabilityConfigs.map((rc) => {
+                const next = changes.get(rc.regionCode);
+                if (next === undefined || !rc.price) return rc;
+                return { ...rc, price: decimalToMoney(next, rc.price.currencyCode) };
+              });
+            await gpFetch(
+              gpCredentials,
+              `${API}/${selectedPackage}/oneTimeProducts/${selectedRef.productId}`,
+              {
+                method: "PATCH",
+                body: updated,
+              }
+            );
+          }
         } else {
           const sub = subs.find((s) => s.productId === selectedRef.productId);
           if (!sub) throw new Error("Subscription not loaded — refresh and retry.");

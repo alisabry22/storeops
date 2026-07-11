@@ -19,8 +19,11 @@ export class GpError extends Error {
 function humanizeGpError(status: number, detail: string): string {
   if (status === 401)
     return "Google rejected the token (401). Reconnect with your service-account JSON — the key may have been deleted in Google Cloud Console.";
-  if (status === 403)
+  if (status === 403) {
+    if (/migrate to the new publishing API/i.test(detail))
+      return "This app has been migrated to Google's new Publishing API (403). The legacy in-app-products endpoint is disabled for it — StoreOps will fall back to /oneTimeProducts automatically.";
     return `Permission denied (403): ${detail} — Two common causes: (1) the service account email hasn't been invited in Play Console → Users and permissions, or (2) the "Google Play Android Developer API" isn't enabled in the Cloud project.`;
+  }
   if (status === 404)
     return "Not found (404). Check the package name — the app must exist in Play Console and be accessible to this service account.";
   if (status === 429)
