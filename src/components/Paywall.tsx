@@ -215,8 +215,7 @@ export function PaywallModal({
               </a>
             )}
             <p className="text-center text-xs text-zinc-500 mb-4">
-              Secure checkout by Lemon Squeezy · 14-day refund · cancel
-              anytime
+              Cancel anytime
             </p>
 
             <div className="border-t border-zinc-800 pt-4">

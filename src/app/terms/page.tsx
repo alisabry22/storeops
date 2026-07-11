@@ -66,11 +66,9 @@ export default function TermsPage() {
             The free plan covers browsing, previews, and exports. Paid plans
             (Pro yearly, Lifetime) unlock write operations. Payments are
             processed by Lemon Squeezy as merchant of record — they handle
-            checkout, invoices, and applicable taxes. We offer a{" "}
-            <strong className="text-zinc-100">14-day refund</strong>, no
-            questions asked — contact support with your order email. Yearly
-            subscriptions can be cancelled anytime and remain active until the
-            end of the paid period.
+            checkout, invoices, and applicable taxes. Yearly subscriptions can
+            be cancelled anytime and remain active until the end of the paid
+            period.
           </p>
         </section>
 

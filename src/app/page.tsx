@@ -394,7 +394,7 @@ export default function LandingPage() {
                 Get Lifetime
               </a>
               <p className="mt-3 text-center text-xs text-zinc-400">
-                <span className="text-emerald-400">14-day refund</span> · one key, all your devices
+                One key, all your devices
               </p>
             </div>
           )}
@@ -428,7 +428,7 @@ export default function LandingPage() {
               Get Pro
             </a>
             <p className="mt-3 text-center text-xs text-zinc-400">
-              <span className="text-emerald-400">14-day refund</span> · cancel anytime · one key, all your devices
+              Cancel anytime · one key, all your devices
             </p>
           </div>
         </div>
