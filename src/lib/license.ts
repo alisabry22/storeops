@@ -7,6 +7,7 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { useAccount } from "./account";
 
 export const CHECKOUT_URL =
   process.env.NEXT_PUBLIC_LS_CHECKOUT_URL ??
@@ -146,5 +147,8 @@ export const useLicense = create<LicenseState>()(
 );
 
 export function useIsPro(): boolean {
-  return useLicense((s) => s.status === "active");
+  // Pro from either source: account plan (SaaS) or device license (legacy)
+  const deviceLicense = useLicense((s) => s.status === "active");
+  const accountPro = useAccount((s) => s.plan === "pro" || s.plan === "lifetime");
+  return deviceLicense || accountPro;
 }

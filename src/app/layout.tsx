@@ -1,8 +1,12 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { ClerkProvider } from "@clerk/nextjs";
 import { KeyMigrator } from "@/components/KeyMigrator";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_TITLE, SITE_URL } from "@/lib/site";
 import "./globals.css";
+
+// Accounts are opt-in by env: without Clerk keys the app runs local-only.
+const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -74,7 +78,7 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  return (
+  const content = (
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
@@ -88,5 +92,23 @@ export default function RootLayout({
         {children}
       </body>
     </html>
+  );
+
+  if (!clerkEnabled) return content;
+
+  return (
+    <ClerkProvider
+      appearance={{
+        variables: {
+          colorPrimary: "#10b981",
+          colorBackground: "#18181b",
+          colorForeground: "#f4f4f5",
+          colorInput: "#09090b",
+          colorInputForeground: "#f4f4f5",
+        },
+      }}
+    >
+      {content}
+    </ClerkProvider>
   );
 }

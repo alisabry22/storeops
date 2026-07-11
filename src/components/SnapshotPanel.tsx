@@ -8,6 +8,7 @@ import {
   listSnapshots,
   type PriceSnapshot,
 } from "@/lib/snapshots";
+import { fetchServerSnapshots } from "@/lib/snapshot-sync";
 
 /**
  * Snapshots list with one-click restore, export, and named save.
@@ -34,7 +35,21 @@ export function SnapshotPanel({
   const [saveName, setSaveName] = useState("");
 
   useEffect(() => {
-    setSnapshots(listSnapshots(appId, scope));
+    const local = listSnapshots(appId, scope);
+    setSnapshots(local);
+    // Merge in account-synced snapshots (other devices / cleared cache)
+    let cancelled = false;
+    fetchServerSnapshots(appId, scope).then((server) => {
+      if (cancelled || server.length === 0) return;
+      const byId = new Map(local.map((s) => [s.id, s]));
+      for (const s of server) if (!byId.has(s.id)) byId.set(s.id, s);
+      setSnapshots(
+        [...byId.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [appId, scope, refreshKey]);
 
   if (snapshots.length === 0 && !onSave) return null;
@@ -132,7 +147,7 @@ export function SnapshotPanel({
                     <button
                       onClick={() => {
                         deleteSnapshot(s.id);
-                        setSnapshots(listSnapshots(appId, scope));
+                        setSnapshots((prev) => prev.filter((x) => x.id !== s.id));
                       }}
                       className="text-xs text-zinc-600 hover:text-red-400"
                       title="Delete snapshot"

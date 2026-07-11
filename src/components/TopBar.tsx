@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCredentials } from "@/lib/store";
 import { useIsPro, useLicense } from "@/lib/license";
 import { useState } from "react";
+import { AccountControls } from "./AccountControls";
 import { PaywallModal } from "./Paywall";
 
 /**
@@ -62,6 +63,7 @@ export function TopBar({ backToApps = false }: { backToApps?: boolean }) {
         >
           Disconnect
         </button>
+        <AccountControls />
       </div>
       <PaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
     </header>

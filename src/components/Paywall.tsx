@@ -70,6 +70,13 @@ export function PaywallModal({
     const res = await activate(key);
     setBusy(false);
     if (res.ok) {
+      // Also attach the key to the account when signed in, so Pro follows
+      // the user across devices. Best-effort — device license already works.
+      void fetch("/api/claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ licenseKey: key.trim() }),
+      }).catch(() => {});
       setDone(true);
       setTimeout(onClose, 1600);
     } else {

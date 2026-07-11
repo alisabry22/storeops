@@ -5,6 +5,8 @@
  */
 "use client";
 
+import { deleteSnapshotFromServer, pushSnapshotToServer } from "./snapshot-sync";
+
 export interface SnapshotRow {
   territoryId: string;
   pricePointId: string;
@@ -73,11 +75,13 @@ export function takeSnapshot(
   // newest first, cap per scope
   const kept = [snapshot, ...sameScope].slice(0, MAX_PER_SCOPE);
   writeAll([...kept, ...others]);
+  pushSnapshotToServer(snapshot);
   return snapshot;
 }
 
 export function deleteSnapshot(id: string) {
   writeAll(readAll().filter((s) => s.id !== id));
+  deleteSnapshotFromServer(id);
 }
 
 export function formatSnapshotDate(iso: string): string {
