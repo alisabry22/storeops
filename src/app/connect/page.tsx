@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useCredentials } from "@/lib/store";
 import { ascFetch } from "@/lib/asc/client";
 import { destroyPrivateKey, storePrivateKey } from "@/lib/asc/jwt";
+import { RequireAccount } from "@/components/RequireAccount";
 
 /**
  * Store connection hub — the .p8 form lived on the landing page before the
@@ -63,6 +64,7 @@ export default function ConnectPage() {
   if (!hydrated) return null;
 
   return (
+    <RequireAccount>
     <main className="max-w-2xl mx-auto px-6 py-14">
       <Link
         href="/"
@@ -168,5 +170,6 @@ export default function ConnectPage() {
         </Link>
       </div>
     </main>
+    </RequireAccount>
   );
 }

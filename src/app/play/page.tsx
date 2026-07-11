@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { PaywallModal } from "@/components/Paywall";
+import { RequireAccount } from "@/components/RequireAccount";
 import { SnapshotPanel } from "@/components/SnapshotPanel";
 import { useIsPro } from "@/lib/license";
 import { takeSnapshot, type PriceSnapshot } from "@/lib/snapshots";
@@ -437,6 +438,7 @@ export default function PlayPage() {
   if (!hydrated) return null;
 
   return (
+    <RequireAccount>
     <main className="max-w-5xl mx-auto w-full px-6 py-10">
       {/* Play-specific header — Apple credentials/TopBar don't apply here */}
       <header className="flex items-center justify-between mb-10">
@@ -806,5 +808,6 @@ export default function PlayPage() {
 
       <PaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
     </main>
+    </RequireAccount>
   );
 }
