@@ -146,6 +146,24 @@ export const useLicense = create<LicenseState>()(
   )
 );
 
+/**
+ * Prefill the Lemon Squeezy checkout with the signed-in user's email so the
+ * purchase webhook can match it to the account — no license key entry needed.
+ */
+export function withCheckoutEmail(url: string, email: string | null): string {
+  if (!url || !email) return url;
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}checkout[email]=${encodeURIComponent(email)}`;
+}
+
+export function useCheckoutUrls(): { yearly: string; lifetime: string } {
+  const email = useAccount((s) => s.email);
+  return {
+    yearly: withCheckoutEmail(CHECKOUT_URL, email),
+    lifetime: withCheckoutEmail(LIFETIME_CHECKOUT_URL, email),
+  };
+}
+
 export function useIsPro(): boolean {
   // Pro from either source: account plan (SaaS) or device license (legacy)
   const deviceLicense = useLicense((s) => s.status === "active");

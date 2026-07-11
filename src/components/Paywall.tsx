@@ -2,10 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  CHECKOUT_URL,
-  LIFETIME_CHECKOUT_URL,
   LIFETIME_PRICE,
   YEARLY_PRICE,
+  useCheckoutUrls,
   useLicense,
 } from "@/lib/license";
 
@@ -42,6 +41,7 @@ export function PaywallModal({
   pending?: PendingValue;
 }) {
   const { activate } = useLicense();
+  const { yearly: yearlyUrl, lifetime: lifetimeUrl } = useCheckoutUrls();
   const [key, setKey] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -185,10 +185,10 @@ export function PaywallModal({
               </>
             )}
 
-            {LIFETIME_CHECKOUT_URL ? (
+            {lifetimeUrl ? (
               <div className="space-y-2 mb-1.5">
                 <a
-                  href={LIFETIME_CHECKOUT_URL}
+                  href={lifetimeUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="btn-glow block w-full text-center rounded-md bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 transition"
@@ -196,7 +196,7 @@ export function PaywallModal({
                   Lifetime — {LIFETIME_PRICE} once, own it forever
                 </a>
                 <a
-                  href={CHECKOUT_URL}
+                  href={yearlyUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="block w-full text-center rounded-md border border-emerald-800 px-4 py-2.5 text-sm font-semibold text-emerald-400 hover:border-emerald-500 transition"
@@ -206,7 +206,7 @@ export function PaywallModal({
               </div>
             ) : (
               <a
-                href={CHECKOUT_URL}
+                href={yearlyUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="btn-glow block w-full text-center rounded-md bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 transition mb-1.5"

@@ -14,16 +14,15 @@ export default function Icon() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "#09090b",
+          background: "#18181b",
           borderRadius: 14,
-          border: "2px solid rgba(16,185,129,0.4)",
         }}
       >
         <span
           style={{
-            fontSize: 40,
+            fontSize: 46,
             fontWeight: 800,
-            color: "#34d399",
+            color: "#10b981",
             lineHeight: 1,
           }}
         >

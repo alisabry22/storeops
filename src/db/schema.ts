@@ -47,6 +47,18 @@ export const snapshots = pgTable(
   (t) => [index("snapshots_user_scope_idx").on(t.userId, t.appId, t.scope)]
 );
 
+/**
+ * Purchases that arrived (via Lemon Squeezy webhook) before the buyer had an
+ * account. Keyed by checkout email; applied and deleted on first sign-in.
+ */
+export const pendingUpgrades = pgTable("pending_upgrades", {
+  email: text("email").primaryKey(),
+  /** pro | lifetime */
+  plan: text("plan").notNull().default("pro"),
+  lsLicenseKey: text("ls_license_key"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export const usageEvents = pgTable("usage_events", {
   id: serial("id").primaryKey(),
   userId: text("user_id"),

@@ -1,14 +1,13 @@
 "use client";
 
-import { useEffect } from "react";
 import { SignInButton, UserButton, useUser } from "@clerk/nextjs";
-import { useAccount } from "@/lib/account";
 
 const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
 /**
- * Sign-in / avatar for the TopBar. Renders nothing until Clerk env keys
- * are configured, so local-only installs keep working.
+ * Sign-in / avatar for the TopBar. Purely presentational — account state
+ * syncing lives in <AccountSync /> in the root layout. Renders nothing until
+ * Clerk env keys are configured, so local-only installs keep working.
  */
 export function AccountControls() {
   if (!clerkEnabled) return null;
@@ -17,14 +16,6 @@ export function AccountControls() {
 
 function AccountControlsInner() {
   const { isSignedIn, isLoaded } = useUser();
-  const fetchMe = useAccount((s) => s.fetchMe);
-  const reset = useAccount((s) => s.reset);
-
-  useEffect(() => {
-    if (!isLoaded) return;
-    if (isSignedIn) fetchMe();
-    else reset();
-  }, [isLoaded, isSignedIn, fetchMe, reset]);
 
   if (!isLoaded) return null;
 
@@ -38,7 +29,5 @@ function AccountControlsInner() {
     );
   }
 
-  return (
-    <UserButton appearance={{ elements: { avatarBox: "h-7 w-7" } }} />
-  );
+  return <UserButton appearance={{ elements: { avatarBox: "h-7 w-7" } }} />;
 }

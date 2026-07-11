@@ -14,15 +14,14 @@ export default function AppleIcon() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background:
-            "radial-gradient(120px 80px at 50% 0%, rgba(16,185,129,0.25), transparent), #09090b",
+          background: "#18181b",
         }}
       >
         <span
           style={{
-            fontSize: 110,
+            fontSize: 120,
             fontWeight: 800,
-            color: "#34d399",
+            color: "#10b981",
             lineHeight: 1,
           }}
         >

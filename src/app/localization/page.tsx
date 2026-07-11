@@ -98,7 +98,7 @@ export default function LocalizationPage() {
           Free to connect and view all localizations. No account required.
         </p>
         <Link
-          href="/"
+          href="/connect"
           className="inline-block rounded-md bg-emerald-500 px-6 py-2.5 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 transition"
         >
           Try StoreOps free →

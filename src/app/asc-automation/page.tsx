@@ -121,7 +121,7 @@ export default function AscAutomationPage() {
           Connect your App Store Connect key and start automating in 30 seconds. Free to try.
         </p>
         <Link
-          href="/"
+          href="/connect"
           className="inline-block rounded-md bg-emerald-500 px-6 py-2.5 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 transition"
         >
           Try StoreOps free →

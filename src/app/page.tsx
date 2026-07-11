@@ -2,16 +2,45 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useCredentials } from "@/lib/store";
-import { ascFetch } from "@/lib/asc/client";
-import { destroyPrivateKey, storePrivateKey } from "@/lib/asc/jwt";
 import {
-  CHECKOUT_URL,
-  LIFETIME_CHECKOUT_URL,
   LIFETIME_PRICE,
   YEARLY_PRICE,
+  useCheckoutUrls,
 } from "@/lib/license";
+import { SignInButton, useUser } from "@clerk/nextjs";
+
+const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+
+function OpenAppLink() {
+  return (
+    <Link
+      href="/apps"
+      className="rounded-md bg-emerald-500 px-4 py-1.5 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 transition"
+    >
+      Open app →
+    </Link>
+  );
+}
+
+function HomeNav({ connected }: { connected: boolean }) {
+  // Without Clerk (local-only installs), still surface the app entry point
+  if (!clerkEnabled) return connected ? <OpenAppLink /> : null;
+  return <ClerkNav connected={connected} />;
+}
+
+function ClerkNav({ connected }: { connected: boolean }) {
+  const { isSignedIn, isLoaded } = useUser();
+  if (!isLoaded) return connected ? <OpenAppLink /> : null;
+  if (isSignedIn || connected) return <OpenAppLink />;
+  return (
+    <SignInButton mode="modal">
+      <button className="text-sm text-zinc-300 hover:text-emerald-400 transition">
+        Sign in
+      </button>
+    </SignInButton>
+  );
+}
 
 const FEATURES = [
   {
@@ -58,59 +87,27 @@ const STEPS = [
   },
 ];
 
-export default function SetupPage() {
-  const router = useRouter();
-  const { credentials, setCredentials } = useCredentials();
-  const [issuerId, setIssuerId] = useState("");
-  const [keyId, setKeyId] = useState("");
-  const [privateKeyPem, setPrivateKeyPem] = useState("");
-  const [status, setStatus] = useState<"idle" | "testing" | "error">("idle");
-  const [error, setError] = useState("");
+export default function LandingPage() {
+  const { credentials } = useCredentials();
+  const { yearly: yearlyUrl, lifetime: lifetimeUrl } = useCheckoutUrls();
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     setHydrated(true);
   }, []);
 
-  useEffect(() => {
-    if (hydrated && credentials) router.replace("/apps");
-  }, [hydrated, credentials, router]);
-
-  async function handleKeyFile(file: File) {
-    setPrivateKeyPem(await file.text());
-  }
-
-  async function connect(e: React.FormEvent) {
-    e.preventDefault();
-    setStatus("testing");
-    setError("");
-    const creds = {
-      issuerId: issuerId.trim(),
-      keyId: keyId.trim(),
-    };
-    try {
-      // Import the .p8 as a NON-EXTRACTABLE key (IndexedDB). The PEM itself
-      // is never persisted anywhere — after this line it only exists in the
-      // form state, which is discarded on navigation.
-      await storePrivateKey(privateKeyPem);
-      // Validate the credentials with a real API call before saving
-      await ascFetch(creds, "/v1/apps", { params: { limit: "1" } });
-      setCredentials(creds);
-      router.push("/apps");
-    } catch (err) {
-      // Bad key or bad IDs — don't leave a dangling signing key behind
-      await destroyPrivateKey();
-      setStatus("error");
-      setError(
-        err instanceof Error ? err.message : "Could not connect to Apple."
-      );
-    }
-  }
-
   if (!hydrated) return null;
 
   return (
     <main className="w-full">
+      {/* ---------- Header ---------- */}
+      <header className="sticky top-0 z-30 border-b border-zinc-800/60 bg-zinc-950/80 backdrop-blur-md">
+        <div className="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+          <span className="font-semibold text-zinc-100 tracking-tight">StoreOps</span>
+          <HomeNav connected={!!credentials} />
+        </div>
+      </header>
+
       {/* ---------- Hero + connect ---------- */}
       <section className="max-w-5xl mx-auto px-6 pt-16 pb-12 grid gap-12 lg:grid-cols-[1.1fr_1fr] items-start">
         <div className="animate-fade-up">
@@ -175,83 +172,41 @@ export default function SetupPage() {
           </div>
         </div>
 
-        {/* Connect card */}
-        <div className="card card-hero p-6 animate-fade-up lg:sticky lg:top-8">
-          <h2 className="font-semibold text-lg mb-1">Connect &amp; try it free</h2>
+        {/* Get-started card */}
+        <div className="card card-hero p-6 animate-fade-up lg:sticky lg:top-24">
+          <h2 className="font-semibold text-lg mb-1">Try it on your app — free</h2>
           <p className="text-sm text-zinc-400 mb-5 leading-relaxed">
-            Your .p8 becomes a{" "}
-            <strong className="text-zinc-200">non-extractable browser key</strong>{" "}
-            — it signs 20-minute tokens locally and can never be read back, not
-            even by our own code. It never touches our servers.
+            Connect either store and browse, preview, and export everything.
+            No credit card. Your keys become{" "}
+            <strong className="text-zinc-200">non-extractable browser keys</strong>{" "}
+            — they never touch our servers.
           </p>
 
-          <form onSubmit={connect} className="space-y-4">
-            <label className="block">
-              <span className="text-sm text-zinc-300">Issuer ID</span>
-              <input
-                value={issuerId}
-                onChange={(e) => setIssuerId(e.target.value)}
-                placeholder="69a6de70-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                required
-                className="mt-1 w-full rounded-md bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm font-mono focus:border-emerald-500 focus:outline-none placeholder:text-zinc-600"
-              />
-            </label>
-
-            <label className="block">
-              <span className="text-sm text-zinc-300">Key ID</span>
-              <input
-                value={keyId}
-                onChange={(e) => setKeyId(e.target.value)}
-                placeholder="2X9R4HXF34"
-                required
-                className="mt-1 w-full rounded-md bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm font-mono focus:border-emerald-500 focus:outline-none placeholder:text-zinc-600"
-              />
-            </label>
-
-            <label className="block">
-              <span className="text-sm text-zinc-300">Private key (.p8 file)</span>
-              <input
-                type="file"
-                accept=".p8,.pem"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) handleKeyFile(f);
-                }}
-                className="mt-1 block w-full text-sm text-zinc-400 file:mr-3 file:rounded-md file:border-0 file:bg-zinc-800 file:px-3 file:py-1.5 file:text-sm file:text-zinc-200 hover:file:bg-zinc-700 file:cursor-pointer"
-              />
-              {privateKeyPem && (
-                <span className="mt-1 block text-xs text-emerald-400">
-                  Key loaded ✓
-                </span>
-              )}
-            </label>
-
-            <button
-              type="submit"
-              disabled={!privateKeyPem || status === "testing"}
-              className="btn-glow w-full rounded-md bg-emerald-500 py-2.5 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none transition"
+          <div className="space-y-2.5">
+            <Link
+              href="/connect"
+              className="btn-glow block w-full text-center rounded-md bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 transition"
             >
-              {status === "testing" ? "Verifying with Apple…" : "Connect — free"}
-            </button>
+               Connect App Store →
+            </Link>
+            <Link
+              href="/play"
+              className="block w-full text-center rounded-md border border-emerald-800 px-4 py-2.5 text-sm font-semibold text-emerald-400 hover:border-emerald-500 transition"
+            >
+              🤖 Connect Google Play →
+            </Link>
+          </div>
 
-            {error && (
-              <p className="text-sm text-red-400 bg-red-950/40 border border-red-900 rounded-md px-3 py-2">
-                {error}
-              </p>
-            )}
-          </form>
+          <ul className="mt-5 space-y-1.5 text-xs text-zinc-400 border-t border-zinc-800 pt-4">
+            <li>✓ Browse every app, price, and locale</li>
+            <li>✓ Preview every change as a diff — dry run</li>
+            <li>✓ Export CSVs and AI pricing prompts</li>
+            <li className="text-zinc-500">Pro unlocks one-click applies</li>
+          </ul>
 
           <p className="mt-4 text-xs text-zinc-500 leading-relaxed">
-            App Store Connect → Users and Access → Integrations → App Store
-            Connect API. Role: <strong className="text-zinc-400">App Manager</strong> is
-            enough.
-          </p>
-
-          <p className="mt-3 text-xs text-zinc-500 border-t border-zinc-800 pt-3">
-            Shipping on Android too?{" "}
-            <Link href="/play" className="text-emerald-400 hover:text-emerald-300">
-              Connect Google Play →
-            </Link>
+            2-minute setup with an API key you create in your own store
+            console — full instructions on the next screen.
           </p>
         </div>
       </section>
@@ -360,7 +315,7 @@ export default function SetupPage() {
         </h2>
         <div
           className={`grid gap-4 mx-auto ${
-            LIFETIME_CHECKOUT_URL
+            lifetimeUrl
               ? "sm:grid-cols-3 max-w-4xl"
               : "sm:grid-cols-2 max-w-3xl"
           }`}
@@ -378,7 +333,7 @@ export default function SetupPage() {
               <li className="text-zinc-500">✗ Applying changes to Apple</li>
             </ul>
           </div>
-          {LIFETIME_CHECKOUT_URL && (
+          {lifetimeUrl && (
             <div className="card card-hero p-6 relative">
               <span className="absolute -top-3 left-6 rounded-full bg-emerald-500 px-3 py-0.5 text-xs font-semibold text-zinc-950">
                 Pay once, own it
@@ -397,7 +352,7 @@ export default function SetupPage() {
                 <li>✓ All 175 storefronts, all your apps</li>
               </ul>
               <a
-                href={LIFETIME_CHECKOUT_URL}
+                href={lifetimeUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="btn-glow mt-5 block w-full text-center rounded-md bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 transition"
@@ -409,8 +364,8 @@ export default function SetupPage() {
               </p>
             </div>
           )}
-          <div className={`card p-6 relative ${LIFETIME_CHECKOUT_URL ? "" : "card-hero"}`}>
-            {!LIFETIME_CHECKOUT_URL && (
+          <div className={`card p-6 relative ${lifetimeUrl ? "" : "card-hero"}`}>
+            {!lifetimeUrl && (
               <span className="absolute -top-3 left-6 rounded-full bg-emerald-500 px-3 py-0.5 text-xs font-semibold text-zinc-950">
                 For shipping devs
               </span>
@@ -427,11 +382,11 @@ export default function SetupPage() {
               <li>✓ All 175 storefronts, all your apps</li>
             </ul>
             <a
-              href={CHECKOUT_URL}
+              href={yearlyUrl}
               target="_blank"
               rel="noopener noreferrer"
               className={`mt-5 block w-full text-center rounded-md px-4 py-2.5 text-sm font-semibold transition ${
-                LIFETIME_CHECKOUT_URL
+                lifetimeUrl
                   ? "border border-emerald-800 text-emerald-400 hover:border-emerald-500"
                   : "btn-glow bg-emerald-500 text-zinc-950 hover:bg-emerald-400"
               }`}

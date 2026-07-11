@@ -41,7 +41,7 @@ export default function AppsPage() {
   useEffect(() => {
     if (!hydrated) return;
     if (!credentials) {
-      router.replace("/");
+      router.replace("/connect");
       return;
     }
     ascFetchAll<App>(credentials, "/v1/apps")
