@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { SignInButton, SignUpButton, useUser } from "@clerk/nextjs";
 
 const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
@@ -50,6 +51,17 @@ function Gate({ children }: { children: React.ReactNode }) {
           <li>✓ No credit card required</li>
           <li>✓ Snapshots synced across devices</li>
         </ul>
+        <p className="mt-5 text-[11px] text-zinc-600">
+          By signing up you agree to the{" "}
+          <Link href="/terms" className="text-zinc-500 hover:text-zinc-300">
+            Terms
+          </Link>{" "}
+          and{" "}
+          <Link href="/privacy" className="text-zinc-500 hover:text-zinc-300">
+            Privacy Policy
+          </Link>
+          .
+        </p>
       </div>
     </div>
   );

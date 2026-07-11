@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
+import { Analytics } from "@vercel/analytics/next";
 import { AccountSync } from "@/components/AccountSync";
 import { KeyMigrator } from "@/components/KeyMigrator";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_TITLE, SITE_URL } from "@/lib/site";
@@ -92,6 +93,7 @@ export default function RootLayout({
         <KeyMigrator />
         {clerkEnabled && <AccountSync />}
         {children}
+        <Analytics />
       </body>
     </html>
   );

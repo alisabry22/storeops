@@ -8,6 +8,8 @@ import { useState } from "react";
 import { AccountControls } from "./AccountControls";
 import { PaywallModal } from "./Paywall";
 
+const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+
 /**
  * Shared top chrome for every authenticated page: logo, Pro badge, Disconnect.
  * On app-scoped pages a "← Apps" back link is shown to the left of the logo.
@@ -38,6 +40,20 @@ export function TopBar({ backToApps = false }: { backToApps?: boolean }) {
         </h1>
       </div>
       <div className="flex items-center gap-3 shrink-0">
+        <Link
+          href="/play"
+          className="hidden sm:inline text-sm text-zinc-400 hover:text-emerald-400 transition"
+        >
+          Google Play →
+        </Link>
+        {clerkEnabled && (
+          <Link
+            href="/account"
+            className="hidden sm:inline text-sm text-zinc-400 hover:text-zinc-200 transition"
+          >
+            Account
+          </Link>
+        )}
         {isPro ? (
           <span
             className="text-xs rounded-full border border-emerald-800 bg-emerald-950/40 px-3 py-1 text-emerald-400 cursor-default"

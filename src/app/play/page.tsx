@@ -455,6 +455,9 @@ export default function PlayPage() {
           <Link href="/apps" className="text-sm text-zinc-400 hover:text-emerald-400 transition">
              App Store →
           </Link>
+          <Link href="/account" className="text-sm text-zinc-400 hover:text-zinc-200 transition">
+            Account
+          </Link>
           {gpCredentials && (
             <button
               onClick={() => clearGpCredentials()}

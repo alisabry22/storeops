@@ -459,10 +459,24 @@ export default function LandingPage() {
             </a>
           ))}
         </div>
-        <p className="text-center text-xs text-zinc-500">
+        <p className="text-center text-xs text-zinc-500 mb-4">
           Built by an indie dev who got tired of clicking. 🛠 — Store
           <span className="text-emerald-500">Ops</span>
         </p>
+        <div className="flex justify-center gap-5 text-xs text-zinc-600">
+          <Link href="/terms" className="hover:text-zinc-400 transition">
+            Terms
+          </Link>
+          <Link href="/privacy" className="hover:text-zinc-400 transition">
+            Privacy
+          </Link>
+          <a
+            href="mailto:support@storeops.dev"
+            className="hover:text-zinc-400 transition"
+          >
+            support@storeops.dev
+          </a>
+        </div>
       </footer>
     </main>
   );
