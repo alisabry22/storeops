@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCredentials } from "@/lib/store";
 import { ascFetch } from "@/lib/asc/client";
@@ -161,7 +162,7 @@ export default function SetupPage() {
           </ul>
 
           <div className="mt-8 flex flex-wrap gap-2">
-            {["175 storefronts", "40+ locales", "0 accounts", "100% key-private"].map(
+            {["175 storefronts", "40+ locales", "App Store + Google Play", "100% key-private"].map(
               (chip) => (
                 <span
                   key={chip}
@@ -245,6 +246,13 @@ export default function SetupPage() {
             Connect API. Role: <strong className="text-zinc-400">App Manager</strong> is
             enough.
           </p>
+
+          <p className="mt-3 text-xs text-zinc-500 border-t border-zinc-800 pt-3">
+            Shipping on Android too?{" "}
+            <Link href="/play" className="text-emerald-400 hover:text-emerald-300">
+              Connect Google Play →
+            </Link>
+          </p>
         </div>
       </section>
 
@@ -268,7 +276,7 @@ export default function SetupPage() {
       {/* ---------- How it works ---------- */}
       <section className="max-w-5xl mx-auto px-6 py-12">
         <h2 className="text-2xl font-bold tracking-tight mb-8">
-          Three steps. No account.
+          Three steps. Zero key exposure.
         </h2>
         <div className="grid gap-4 sm:grid-cols-3">
           {STEPS.map((s) => (
@@ -334,10 +342,11 @@ export default function SetupPage() {
               </p>
             </div>
             <div>
-              <p className="font-semibold text-zinc-200 mb-1">Nothing stored</p>
+              <p className="font-semibold text-zinc-200 mb-1">Keys never stored</p>
               <p className="text-zinc-400 leading-relaxed">
-                No accounts, no database, no logs of your data. The code is
-                public — audit the whole path yourself.
+                Your keys never touch our servers — accounts only sync
+                snapshots and preferences. The code is public — audit the
+                whole path yourself.
               </p>
             </div>
           </div>
@@ -347,7 +356,7 @@ export default function SetupPage() {
       {/* ---------- Pricing ---------- */}
       <section className="max-w-5xl mx-auto px-6 py-12">
         <h2 className="text-2xl font-bold tracking-tight mb-8 text-center">
-          Simple pricing. No account, just a license key.
+          Simple pricing. Both stores included.
         </h2>
         <div
           className={`grid gap-4 mx-auto ${

@@ -15,7 +15,13 @@ export interface ParsedSheet {
   warnings: string[];
 }
 
-export function parsePriceSheet(text: string): ParsedSheet {
+export function parsePriceSheet(
+  text: string,
+  options: { codeLength?: 2 | 3 } = {}
+): ParsedSheet {
+  const codeLength = options.codeLength ?? 3;
+  const codeRe = codeLength === 2 ? /^[A-Z]{2}$/ : /^[A-Z]{3}$/;
+  const example = codeLength === 2 ? "US, EG, DE" : "USA, EGY, DEU";
   const warnings: string[] = [];
   const seen = new Map<string, number>();
 
@@ -29,11 +35,11 @@ export function parsePriceSheet(text: string): ParsedSheet {
 
     const territory = (parts[0] ?? "").toUpperCase();
 
-    // Header row: first cell isn't a 3-letter code → skip silently on line 1
-    if (!/^[A-Z]{3}$/.test(territory)) {
+    // Header row: first cell isn't a region code → skip silently on line 1
+    if (!codeRe.test(territory)) {
       if (i > 0) {
         warnings.push(
-          `Line ${i + 1}: "${parts[0]}" is not a 3-letter territory code (like USA, EGY, DEU) — skipped`
+          `Line ${i + 1}: "${parts[0]}" is not a ${codeLength}-letter region code (like ${example}) — skipped`
         );
       }
       return;
