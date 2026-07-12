@@ -11,7 +11,8 @@ import { TopBar } from "@/components/TopBar";
 import { useIsPro } from "@/lib/license";
 import { takeSnapshot, type PriceSnapshot } from "@/lib/snapshots";
 import { buildCsv, parsePriceSheet, snapToPricePoint } from "@/lib/pricing-import";
-import { STRATEGIES, type PricingStrategy, getStrategy } from "@/lib/pricing-strategies";
+import { type PricingStrategy, getStrategy } from "@/lib/pricing-strategies";
+import { AiRepricePanel } from "@/components/AiRepricePanel";
 import type {
   InAppPurchase,
   InAppPurchasePrice,
@@ -208,14 +209,15 @@ export default function IapPage() {
     return byTerritory;
   }
 
-  async function buildImportPreview() {
-    if (!credentials || !sheetText.trim() || !selectedIapId) return;
+  async function buildImportPreview(csvOverride?: string) {
+    const _text = csvOverride ?? sheetText;
+    if (!credentials || !_text.trim() || !selectedIapId) return;
     setError("");
     setApplied(false);
     setImportPreview(null);
     setImportProgress(true);
 
-    const { rows, warnings } = parsePriceSheet(sheetText);
+    const { rows, warnings } = parsePriceSheet(_text);
     const allWarnings = [...warnings];
 
     const valid = rows.filter((r) => {
@@ -523,48 +525,18 @@ export default function IapPage() {
                   CSV from any AI or spreadsheet
                 </span>
               </h2>
-              <div className="flex gap-2">
-                <button
-                  onClick={exportCsv}
-                  disabled={currentPrices.length === 0}
-                  className="text-xs rounded-md border border-zinc-700 px-3 py-1.5 text-zinc-300 hover:border-zinc-500 disabled:opacity-40 transition"
-                >
-                  ↓ Export current CSV
-                </button>
-                <button
-                  onClick={copyAiPrompt}
-                  disabled={currentPrices.length === 0}
-                  className="text-xs rounded-md border border-emerald-800 px-3 py-1.5 text-emerald-400 hover:border-emerald-600 disabled:opacity-40 transition"
-                >
-                  {copiedPrompt ? "Copied ✓" : `⧉ Copy ${getStrategy(strategy).label} prompt`}
-                </button>
               </div>
-            </div>
-            <p className="text-sm text-zinc-400 mb-2">
-              Export → reprice with AI → paste back. Territories not in your sheet keep
-              their current price. One request to Apple sets everything.
-            </p>
-
-            {/* AI objective picker */}
-            <div className="flex items-center gap-2 flex-wrap mb-3">
-              <span className="text-xs text-zinc-500 shrink-0">AI objective:</span>
-              {STRATEGIES.map((s) => (
-                <button
-                  key={s.key}
-                  onClick={() => setStrategy(s.key)}
-                  title={s.tagline}
-                  className={`text-xs rounded-md px-2.5 py-1 border transition ${
-                    strategy === s.key
-                      ? "bg-emerald-900/60 border-emerald-700 text-emerald-300"
-                      : "border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
-                  }`}
-                >
-                  {s.emoji} {s.label}
-                  {s.star && <span className="ml-1 text-amber-400 text-[10px]">★</span>}
-                </button>
-              ))}
-            </div>
-
+            <AiRepricePanel
+              getCsv={() => buildCsv(currentPrices.map((r) => ({ territoryId: r.territoryId, currency: r.currency, customerPrice: r.customerPrice })))}
+              platform="ios"
+              strategy={strategy}
+              onStrategyChange={setStrategy}
+              onResult={async (csv) => { setSheetText(csv); await buildImportPreview(csv); }}
+              disabled={currentPrices.length === 0}
+              onExportCsv={exportCsv}
+              onCopyPrompt={copyAiPrompt}
+              copiedPrompt={copiedPrompt}
+            />
             <textarea
               value={sheetText}
               onChange={(e) => {
@@ -600,7 +572,7 @@ export default function IapPage() {
               </label>
 
               <button
-                onClick={buildImportPreview}
+                onClick={() => buildImportPreview()}
                 disabled={!sheetText.trim() || importProgress}
                 className="rounded-md bg-zinc-100 text-zinc-950 px-4 py-2 text-sm font-semibold hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition"
               >

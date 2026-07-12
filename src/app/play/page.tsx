@@ -18,6 +18,8 @@ import {
   microsToDecimal,
   moneyToDecimal,
   requiredCurrency,
+  GP_NOT_BILLABLE,
+  GP_USD_PRICE_CAPS,
   type GpInAppProduct,
   type GpOneTimeProduct,
   type GpPriceRow,
@@ -98,9 +100,6 @@ export default function PlayPage() {
   const [iaps, setIaps] = useState<IapProduct[]>([]);
   const [subs, setSubs] = useState<GpSubscription[]>([]);
   const [selectedRefKey, setSelectedRefKey] = useState("");
-  // regionCode → required currency from Google's own convertRegionPrices API.
-  // Populated once per package load so we never guess or retry for currency errors.
-  const [regionCurrencies, setRegionCurrencies] = useState<Record<string, string>>({});
 
   // Import flow
   const [sheetText, setSheetText] = useState("");
@@ -110,6 +109,9 @@ export default function PlayPage() {
   const [applied, setApplied] = useState(false);
   const [copiedPrompt, setCopiedPrompt] = useState(false);
   const [strategy, setStrategy] = useState<PricingStrategy>("ppp");
+  const [customInstructions, setCustomInstructions] = useState("");
+  const [aiRepricing, setAiRepricing] = useState(false);
+  const [aiError, setAiError] = useState("");
   const [search, setSearch] = useState("");
 
   // Pro gate + snapshots
@@ -199,28 +201,6 @@ export default function PlayPage() {
     setIaps([]);
     setSubs([]);
     setSelectedRefKey("");
-    setRegionCurrencies({});
-
-    // Fetch the definitive region→currency map from Google. One POST to
-    // convertRegionPrices returns every supported region with its required
-    // currency — same as Apple's territory list. We use this instead of a
-    // static map so we never guess and never retry for currency errors.
-    try {
-      const resp = await gpFetch<{
-        convertedRegionPrices?: Record<string, { regionCode: string; price?: { currencyCode: string } }>;
-      }>(gpCredentials, `${API}/${selectedPackage}/monetization:convertRegionPrices`, {
-        method: "POST",
-        body: { price: { currencyCode: "USD", units: "1", nanos: 0 } },
-      });
-      const map: Record<string, string> = {};
-      for (const [code, info] of Object.entries(resp.convertedRegionPrices ?? {})) {
-        if (info.price?.currencyCode) map[code] = info.price.currencyCode;
-      }
-      setRegionCurrencies(map);
-    } catch {
-      // Non-fatal — fall back to the static map if this endpoint fails.
-    }
-
     // --- One-time products (IAPs) ---
     // Google migrated apps to a new monetization API. Migrated apps reject
     // /inappproducts with 403 "Please migrate to the new publishing API" and
@@ -338,14 +318,18 @@ export default function PlayPage() {
     }
   }, [selectedPackage, loadProducts]);
 
-  function exportCsv() {
-    const csv = buildCsv(
-      currentPrices.map((r) => ({
+  function exportableRows() {
+    return currentPrices
+      .filter((r) => !GP_NOT_BILLABLE.has(r.regionCode))
+      .map((r) => ({
         territoryId: r.regionCode,
-        currency: regionCurrencies[r.regionCode] ?? requiredCurrency(r.regionCode, r.currency),
+        currency: requiredCurrency(r.regionCode, r.currency),
         customerPrice: r.price,
-      }))
-    );
+      }));
+  }
+
+  function exportCsv() {
+    const csv = buildCsv(exportableRows());
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -356,22 +340,66 @@ export default function PlayPage() {
   }
 
   async function copyAiPrompt() {
-    const csv = buildCsv(
-      currentPrices.map((r) => ({
-        territoryId: r.regionCode,
-        currency: regionCurrencies[r.regionCode] ?? requiredCurrency(r.regionCode, r.currency),
-        customerPrice: r.price,
-      }))
-    );
+    const csv = buildCsv(exportableRows());
+
+    // Constraints block injected after the CSV so ChatGPT respects Google Play limits.
+    const capsNote = Object.entries(GP_USD_PRICE_CAPS)
+      .map(([code, { min, max }]) => `  - ${code}: min $${min} USD, max $${max} USD`)
+      .join("\n");
+    const constraints = [
+      "",
+      "IMPORTANT GOOGLE PLAY CONSTRAINTS — follow exactly:",
+      `- Do NOT include these regions (not billable on Google Play): ${[...GP_NOT_BILLABLE].join(", ")}`,
+      "- These regions use USD but have Google-imposed price limits:",
+      capsNote,
+      "- Do NOT change the currency column — use exactly the currency shown per region.",
+      "- Return the full CSV with every territory that was given, no extras, no omissions.",
+    ].join("\n");
+
     // Strategy prompts are written for Apple; adapt the platform specifics.
-    const prompt = getStrategy(strategy)
-      .buildPrompt(csv)
-      .replaceAll("iOS app", "Android app")
-      .replaceAll("App Store territories", "Google Play regions")
-      .replaceAll("ISO 3166-1 alpha-3", "ISO 3166-1 alpha-2");
+    const prompt =
+      getStrategy(strategy)
+        .buildPrompt(csv)
+        .replaceAll("iOS app", "Android app")
+        .replaceAll("App Store territories", "Google Play regions")
+        .replaceAll("ISO 3166-1 alpha-3", "ISO 3166-1 alpha-2") + constraints;
+
     await navigator.clipboard.writeText(prompt);
     setCopiedPrompt(true);
     setTimeout(() => setCopiedPrompt(false), 2000);
+  }
+
+  async function aiReprice() {
+    if (currentPrices.length === 0) return;
+    setAiRepricing(true);
+    setAiError("");
+    try {
+      const csv = buildCsv(exportableRows());
+      const res = await fetch("/api/ai-reprice", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ csv, strategy, customInstructions, platform: "android" }),
+      });
+      const data = await res.json() as { csv?: string; error?: string };
+      if (!res.ok || !data.csv) throw new Error(data.error ?? "AI reprice failed");
+      // Drop the result into the sheet text and run preview immediately
+      setSheetText(data.csv);
+      const { rows, warnings } = parsePriceSheet(data.csv, { codeLength: 2 });
+      const preview: GpImportRow[] = [];
+      const warns: string[] = [...warnings];
+      for (const row of rows) {
+        const current = currentByRegion.get(row.territoryId);
+        if (!current) { warns.push(`${row.territoryId}: not in this product's regional pricing — skipped`); continue; }
+        preview.push({ regionCode: row.territoryId, currency: current.currency, currentPrice: current.price, newPrice: String(row.price) });
+      }
+      setImportWarnings(warns);
+      setImportPreview(preview.length > 0 ? preview : null);
+      setApplied(false);
+    } catch (e) {
+      setAiError(e instanceof Error ? e.message : "AI reprice failed");
+    } finally {
+      setAiRepricing(false);
+    }
   }
 
   function previewImport() {
@@ -495,9 +523,7 @@ export default function PlayPage() {
           const allWarnings: string[] = [];
 
           const correctCurrency = (regionCode: string, storedCurrency: string) =>
-            runtimeCorrections[regionCode] ??
-            regionCurrencies[regionCode] ??
-            requiredCurrency(regionCode, storedCurrency);
+            runtimeCorrections[regionCode] ?? requiredCurrency(regionCode, storedCurrency);
 
           for (let attempt = 0; attempt < 20; attempt++) {
             const updated: GpSubscription = JSON.parse(JSON.stringify(sub));
@@ -870,25 +896,21 @@ export default function PlayPage() {
                       disabled={currentPrices.length === 0}
                       className="text-xs rounded-md border border-zinc-700 px-3 py-1.5 text-zinc-300 hover:border-zinc-500 disabled:opacity-40 transition"
                     >
-                      ↓ Export current CSV
+                      ↓ Export CSV
                     </button>
                     <button
                       onClick={copyAiPrompt}
                       disabled={currentPrices.length === 0}
-                      className="text-xs rounded-md border border-emerald-800 px-3 py-1.5 text-emerald-400 hover:border-emerald-600 disabled:opacity-40 transition"
+                      className="text-xs rounded-md border border-zinc-700 px-3 py-1.5 text-zinc-400 hover:border-zinc-500 disabled:opacity-40 transition"
                     >
-                      {copiedPrompt ? "Copied ✓" : `⧉ Copy ${getStrategy(strategy).label} prompt`}
+                      {copiedPrompt ? "Copied ✓" : "⧉ Copy prompt"}
                     </button>
                   </div>
                 </div>
-                <p className="text-sm text-zinc-400 mb-2">
-                  Export → reprice with AI → paste back. Google accepts free-form
-                  prices (no fixed tiers), region codes are 2-letter (US, EG, DE).
-                </p>
 
                 {/* AI objective picker */}
                 <div className="flex items-center gap-2 flex-wrap mb-3">
-                  <span className="text-xs text-zinc-500 shrink-0">AI objective:</span>
+                  <span className="text-xs text-zinc-500 shrink-0">Objective:</span>
                   {STRATEGIES.map((s) => (
                     <button
                       key={s.key}
@@ -904,6 +926,31 @@ export default function PlayPage() {
                       {s.star && <span className="ml-1 text-amber-400 text-[10px]">★</span>}
                     </button>
                   ))}
+                </div>
+
+                {/* Custom instructions */}
+                <textarea
+                  value={customInstructions}
+                  onChange={(e) => setCustomInstructions(e.target.value)}
+                  placeholder="Optional: add your own rules — e.g. keep Egypt under EGP 150, make India very aggressive, don't touch US price..."
+                  rows={2}
+                  className="w-full rounded-md bg-zinc-950 border border-zinc-800 px-3 py-2 text-sm text-zinc-300 placeholder:text-zinc-600 focus:border-emerald-500 focus:outline-none resize-none mb-3"
+                />
+
+                {/* AI Reprice button */}
+                {aiError && <p className="text-xs text-red-400 mb-2">{aiError}</p>}
+                <button
+                  onClick={aiReprice}
+                  disabled={currentPrices.length === 0 || aiRepricing}
+                  className="w-full rounded-md bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed px-4 py-2 text-sm font-medium text-white transition mb-4"
+                >
+                  {aiRepricing ? "Repricing…" : `✦ AI Reprice · ${getStrategy(strategy).emoji} ${getStrategy(strategy).label}`}
+                </button>
+
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="flex-1 h-px bg-zinc-800" />
+                  <span className="text-xs text-zinc-600">or paste your own CSV</span>
+                  <div className="flex-1 h-px bg-zinc-800" />
                 </div>
 
                 <textarea

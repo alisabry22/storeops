@@ -109,6 +109,24 @@ export const GP_REQUIRED_CURRENCY_2022_02: Record<string, string> = {
 };
 
 /**
+ * Regions that are not billable under the 2022/02 spec.
+ * Google rejects any PATCH that includes these in regionalConfigs.
+ * Exclude them from exports too — no point sending them to ChatGPT.
+ */
+export const GP_NOT_BILLABLE = new Set<string>(["MN"]);
+
+/**
+ * Approximate USD price caps for regions that use USD under the 2022/02 spec
+ * but have tight Google-imposed ceilings (confirmed by live PATCH errors).
+ * Values are conservative — stay below these when generating prices.
+ */
+export const GP_USD_PRICE_CAPS: Record<string, { min: number; max: number }> = {
+  CI: { min: 1.0, max: 1000 }, // F CFA 30–627,341 ≈ $0.05–$1,020 USD
+  CM: { min: 1.0, max: 1000 }, // XAF equivalent, confirmed by range error
+  SN: { min: 1.0, max: 1000 }, // XOF equivalent, confirmed by range error
+};
+
+/**
  * Returns the correct currency for a region under the 2022/02 spec.
  * Falls back to `existingCurrency` for regions not in the override map.
  */
