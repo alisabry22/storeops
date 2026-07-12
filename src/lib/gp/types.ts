@@ -100,6 +100,14 @@ export const GP_REQUIRED_CURRENCY_2022_02: Record<string, string> = {
   TR: "TRY", // Turkey
   UA: "UAH", // Ukraine
   RS: "RSD", // Serbia
+  // West Africa — Google Play uses USD rather than local CFA franc currencies
+  CI: "USD", // Côte d'Ivoire (XOF → USD per 2022/02 spec)
+  GH: "USD", // Ghana (GHS → USD — likely same pattern)
+  NG: "USD", // Nigeria (NGN → USD — likely same pattern)
+  KE: "USD", // Kenya
+  TZ: "USD", // Tanzania
+  UG: "USD", // Uganda
+  ET: "USD", // Ethiopia (also not in regional pricing if never priced there)
 };
 
 /**
