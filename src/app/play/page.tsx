@@ -803,6 +803,28 @@ export default function PlayPage() {
                 />
 
                 <div className="flex flex-wrap items-center gap-3 mt-3">
+                  <label className="text-xs text-zinc-400 flex items-center gap-1.5">
+                    <input
+                      type="file"
+                      accept=".csv,.tsv,.txt"
+                      className="hidden"
+                      id="play-csv-file"
+                      onChange={async (e) => {
+                        const f = e.target.files?.[0];
+                        if (f) {
+                          setSheetText(await f.text());
+                          setImportPreview(null);
+                        }
+                      }}
+                    />
+                    <button
+                      onClick={() => document.getElementById("play-csv-file")?.click()}
+                      className="rounded-md border border-zinc-700 px-3 py-1.5 text-zinc-300 hover:border-zinc-500 transition"
+                    >
+                      Upload .csv
+                    </button>
+                  </label>
+
                   <button
                     onClick={previewImport}
                     disabled={!sheetText.trim() || applying}
