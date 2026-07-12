@@ -78,6 +78,38 @@ export interface GpSubscription {
   archived?: boolean;
 }
 
+/**
+ * Required currencies per region under Google Play's regions version 2022/02.
+ * Subscriptions created before this spec can have stale currency codes (e.g. EUR
+ * for Bulgaria). Sending a PATCH with a mismatched currency causes a 400 even for
+ * regions you didn't touch, because Google re-validates the entire regionalConfigs
+ * array. Correct these before building the update payload.
+ */
+export const GP_REQUIRED_CURRENCY_2022_02: Record<string, string> = {
+  BG: "BGN", // Bulgaria — confirmed by API error
+  CZ: "CZK", // Czech Republic
+  DK: "DKK", // Denmark
+  HU: "HUF", // Hungary
+  PL: "PLN", // Poland
+  RO: "RON", // Romania
+  SE: "SEK", // Sweden
+  CH: "CHF", // Switzerland
+  NO: "NOK", // Norway
+  GB: "GBP", // United Kingdom
+  IS: "ISK", // Iceland
+  TR: "TRY", // Turkey
+  UA: "UAH", // Ukraine
+  RS: "RSD", // Serbia
+};
+
+/**
+ * Returns the correct currency for a region under the 2022/02 spec.
+ * Falls back to `existingCurrency` for regions not in the override map.
+ */
+export function requiredCurrency(regionCode: string, existingCurrency: string): string {
+  return GP_REQUIRED_CURRENCY_2022_02[regionCode] ?? existingCurrency;
+}
+
 /** One row of the unified Play pricing table (regionCode is ISO 3166-1 alpha-2). */
 export interface GpPriceRow {
   regionCode: string;

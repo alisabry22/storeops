@@ -17,6 +17,7 @@ import {
   decimalToMoney,
   microsToDecimal,
   moneyToDecimal,
+  requiredCurrency,
   type GpInAppProduct,
   type GpOneTimeProduct,
   type GpPriceRow,
@@ -358,7 +359,7 @@ export default function PlayPage() {
       const current = currentByRegion.get(row.territoryId);
       if (!current) {
         warnings.push(
-          `${row.territoryId}: not currently priced for this product — skipped (Google needs an existing price to know the currency)`
+          `${row.territoryId}: not in this product's regional pricing — skipped. Add it in Play Console first (Monetize → select product → Set prices → add region), then re-import.`
         );
         continue;
       }
@@ -452,11 +453,31 @@ export default function PlayPage() {
             (b) => b.basePlanId === selectedRef.basePlanId
           );
           if (!plan) throw new Error("Base plan not found — refresh and retry.");
+          const currencyWarnings: string[] = [];
           plan.regionalConfigs = (plan.regionalConfigs ?? []).map((rc) => {
+            if (!rc.price) return rc;
+            const correct = requiredCurrency(rc.regionCode, rc.price.currencyCode);
+            if (correct !== rc.price.currencyCode) {
+              currencyWarnings.push(
+                `${rc.regionCode}: stale currency corrected ${rc.price.currencyCode}→${correct} (2022/02 spec)`
+              );
+            }
             const next = changes.get(rc.regionCode);
-            if (next === undefined || !rc.price) return rc;
-            return { ...rc, price: decimalToMoney(next, rc.price.currencyCode) };
+            const useCurrency = correct;
+            if (next !== undefined) {
+              return { ...rc, price: decimalToMoney(next, useCurrency) };
+            }
+            return correct !== rc.price.currencyCode
+              ? { ...rc, price: { ...rc.price, currencyCode: correct } }
+              : rc;
           });
+          if (currencyWarnings.length > 0) {
+            setImportWarnings((prev) => [
+              ...prev,
+              ...currencyWarnings,
+              "Regions with corrected currencies: verify their prices in Play Console.",
+            ]);
+          }
           await gpFetch(
             gpCredentials,
             `${API}/${selectedPackage}/subscriptions/${selectedRef.productId}`,
