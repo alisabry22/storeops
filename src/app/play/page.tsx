@@ -98,6 +98,9 @@ export default function PlayPage() {
   const [iaps, setIaps] = useState<IapProduct[]>([]);
   const [subs, setSubs] = useState<GpSubscription[]>([]);
   const [selectedRefKey, setSelectedRefKey] = useState("");
+  // regionCode → required currency from Google's own convertRegionPrices API.
+  // Populated once per package load so we never guess or retry for currency errors.
+  const [regionCurrencies, setRegionCurrencies] = useState<Record<string, string>>({});
 
   // Import flow
   const [sheetText, setSheetText] = useState("");
@@ -196,6 +199,27 @@ export default function PlayPage() {
     setIaps([]);
     setSubs([]);
     setSelectedRefKey("");
+    setRegionCurrencies({});
+
+    // Fetch the definitive region→currency map from Google. One POST to
+    // convertRegionPrices returns every supported region with its required
+    // currency — same as Apple's territory list. We use this instead of a
+    // static map so we never guess and never retry for currency errors.
+    try {
+      const resp = await gpFetch<{
+        convertedRegionPrices?: Record<string, { regionCode: string; price?: { currencyCode: string } }>;
+      }>(gpCredentials, `${API}/${selectedPackage}/monetization:convertRegionPrices`, {
+        method: "POST",
+        body: { price: { currencyCode: "USD", units: "1", nanos: 0 } },
+      });
+      const map: Record<string, string> = {};
+      for (const [code, info] of Object.entries(resp.convertedRegionPrices ?? {})) {
+        if (info.price?.currencyCode) map[code] = info.price.currencyCode;
+      }
+      setRegionCurrencies(map);
+    } catch {
+      // Non-fatal — fall back to the static map if this endpoint fails.
+    }
 
     // --- One-time products (IAPs) ---
     // Google migrated apps to a new monetization API. Migrated apps reject
@@ -318,7 +342,7 @@ export default function PlayPage() {
     const csv = buildCsv(
       currentPrices.map((r) => ({
         territoryId: r.regionCode,
-        currency: r.currency,
+        currency: regionCurrencies[r.regionCode] ?? requiredCurrency(r.regionCode, r.currency),
         customerPrice: r.price,
       }))
     );
@@ -335,7 +359,7 @@ export default function PlayPage() {
     const csv = buildCsv(
       currentPrices.map((r) => ({
         territoryId: r.regionCode,
-        currency: r.currency,
+        currency: regionCurrencies[r.regionCode] ?? requiredCurrency(r.regionCode, r.currency),
         customerPrice: r.price,
       }))
     );
@@ -448,48 +472,118 @@ export default function PlayPage() {
         } else {
           const sub = subs.find((s) => s.productId === selectedRef.productId);
           if (!sub) throw new Error("Subscription not loaded — refresh and retry.");
-          const updated: GpSubscription = JSON.parse(JSON.stringify(sub));
-          const plan = updated.basePlans?.find(
-            (b) => b.basePlanId === selectedRef.basePlanId
-          );
-          if (!plan) throw new Error("Base plan not found — refresh and retry.");
-          const currencyWarnings: string[] = [];
-          plan.regionalConfigs = (plan.regionalConfigs ?? []).map((rc) => {
-            if (!rc.price) return rc;
-            const correct = requiredCurrency(rc.regionCode, rc.price.currencyCode);
-            if (correct !== rc.price.currencyCode) {
-              currencyWarnings.push(
-                `${rc.regionCode}: stale currency corrected ${rc.price.currencyCode}→${correct} (2022/02 spec)`
+
+          // Google validates ALL regionalConfigs against the 2022/02 spec on every
+          // PATCH — even regions we didn't change. Stale currencies (EUR for BG,
+          // XAF for CM, etc.) cause a 400 with the exact region + expected currency
+          // in the message. We parse that, correct the payload, and retry until all
+          // mismatches are resolved. The static map seeds known corrections so they
+          // don't cost extra round-trips.
+          const NOT_BILLABLE    = /Region code (\w+) is not billable/;
+          const PRICE_RANGE     = /Price for (\w+) must be between/;
+          const CURRENCY_ERR    = /Invalid currency for region code (\w+).*Expected (\w+) but got/;
+          const CONFIGS_REMOVED = /Regional configs were removed from the base plan: (.+)/;
+
+          // Regions excluded from payload — only truly "not billable" ones.
+          // Google allows removing these; it rejects removing priced regions.
+          const notBillable = new Set<string>();
+          // Regions that had a price-range error — keep in payload at $0.99.
+          const priceResets = new Map<string, number>();
+          // Runtime currency overrides learned from API errors (fallback if
+          // convertRegionPrices didn't cover a region).
+          const runtimeCorrections: Record<string, string> = {};
+          const allWarnings: string[] = [];
+
+          const correctCurrency = (regionCode: string, storedCurrency: string) =>
+            runtimeCorrections[regionCode] ??
+            regionCurrencies[regionCode] ??
+            requiredCurrency(regionCode, storedCurrency);
+
+          for (let attempt = 0; attempt < 20; attempt++) {
+            const updated: GpSubscription = JSON.parse(JSON.stringify(sub));
+            const plan = updated.basePlans?.find(
+              (b) => b.basePlanId === selectedRef.basePlanId
+            );
+            if (!plan) throw new Error("Base plan not found — refresh and retry.");
+
+            plan.regionalConfigs = (plan.regionalConfigs ?? [])
+              .filter((rc) => !notBillable.has(rc.regionCode))
+              .map((rc) => {
+                if (!rc.price) return rc;
+                const correct = correctCurrency(rc.regionCode, rc.price.currencyCode);
+                const fallback = priceResets.get(rc.regionCode);
+                if (fallback !== undefined)
+                  return { ...rc, price: decimalToMoney(fallback, correct) };
+                const next = changes.get(rc.regionCode);
+                if (next !== undefined)
+                  return { ...rc, price: decimalToMoney(next, correct) };
+                return correct !== rc.price.currencyCode
+                  ? { ...rc, price: { ...rc.price, currencyCode: correct } }
+                  : rc;
+              });
+
+            try {
+              await gpFetch(
+                gpCredentials,
+                `${API}/${selectedPackage}/subscriptions/${selectedRef.productId}`,
+                {
+                  method: "PATCH",
+                  params: {
+                    updateMask: "basePlans",
+                    "regionsVersion.version": "2022/02",
+                  },
+                  body: updated,
+                }
               );
+              break; // success
+            } catch (e) {
+              if (!(e instanceof GpError)) throw e;
+
+              // Currency still wrong — convertRegionPrices missed this region.
+              // Learn from the error and retry once.
+              const currMatch = e.message.match(CURRENCY_ERR);
+              if (currMatch) {
+                runtimeCorrections[currMatch[1]] = currMatch[2];
+                allWarnings.push(`Auto-corrected currency: ${currMatch[1]} → ${currMatch[2]}`);
+                continue;
+              }
+
+              // Not billable — Google allows removing these.
+              const nbMatch = e.message.match(NOT_BILLABLE);
+              if (nbMatch) {
+                notBillable.add(nbMatch[1]);
+                allWarnings.push(`⚠ ${nbMatch[1]}: not billable in regions version 2022/02 — excluded`);
+                continue;
+              }
+
+              // Price out of range — must stay in payload; use $0.99 fallback.
+              const prMatch = e.message.match(PRICE_RANGE);
+              if (prMatch) {
+                priceResets.set(prMatch[1], 0.99);
+                allWarnings.push(
+                  `⚠ ${prMatch[1]}: price out of allowed range — reset to $0.99. Set the correct price in Play Console.`
+                );
+                continue;
+              }
+
+              // We excluded a priced region — undo the exclusion, use $0.99 instead.
+              const removedMatch = e.message.match(CONFIGS_REMOVED);
+              if (removedMatch) {
+                for (const r of removedMatch[1].split(/,\s*/).map((s) => s.trim()).filter(Boolean)) {
+                  notBillable.delete(r);
+                  priceResets.set(r, 0.99);
+                  allWarnings.push(`⚠ ${r}: cannot be removed — reset to $0.99. Fix in Play Console.`);
+                }
+                continue;
+              }
+
+              throw e;
             }
-            const next = changes.get(rc.regionCode);
-            const useCurrency = correct;
-            if (next !== undefined) {
-              return { ...rc, price: decimalToMoney(next, useCurrency) };
-            }
-            return correct !== rc.price.currencyCode
-              ? { ...rc, price: { ...rc.price, currencyCode: correct } }
-              : rc;
-          });
-          if (currencyWarnings.length > 0) {
-            setImportWarnings((prev) => [
-              ...prev,
-              ...currencyWarnings,
-              "Regions with corrected currencies: verify their prices in Play Console.",
-            ]);
           }
-          await gpFetch(
-            gpCredentials,
-            `${API}/${selectedPackage}/subscriptions/${selectedRef.productId}`,
-            {
-              method: "PATCH",
-              params: {
-                updateMask: "basePlans",
-                "regionsVersion.version": "2022/02",
-              },
-              body: updated,
-            }
-          );
+
+          if (allWarnings.length > 0) {
+            setImportWarnings((prev) => [...prev, ...allWarnings]);
+          }
         }
 
         setApplied(true);

@@ -96,18 +96,16 @@ export const GP_REQUIRED_CURRENCY_2022_02: Record<string, string> = {
   CH: "CHF", // Switzerland
   NO: "NOK", // Norway
   GB: "GBP", // United Kingdom
-  IS: "ISK", // Iceland
+  IS: "EUR", // Iceland — Google Play uses EUR, not ISK (confirmed by API)
   TR: "TRY", // Turkey
   UA: "UAH", // Ukraine
   RS: "RSD", // Serbia
-  // West Africa — Google Play uses USD rather than local CFA franc currencies
-  CI: "USD", // Côte d'Ivoire (XOF → USD per 2022/02 spec)
-  GH: "USD", // Ghana (GHS → USD — likely same pattern)
-  NG: "USD", // Nigeria (NGN → USD — likely same pattern)
-  KE: "USD", // Kenya
-  TZ: "USD", // Tanzania
-  UG: "USD", // Uganda
-  ET: "USD", // Ethiopia (also not in regional pricing if never priced there)
+  // Africa — confirmed by live API errors
+  CI: "USD", // Côte d'Ivoire (XOF → USD, confirmed)
+  CM: "USD", // Cameroon (XAF → USD, confirmed)
+  SN: "USD", // Senegal (XOF → USD, confirmed)
+  GH: "GHS", // Ghana (confirmed — NOT USD)
+  KE: "KES", // Kenya (confirmed — NOT USD)
 };
 
 /**
