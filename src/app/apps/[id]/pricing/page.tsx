@@ -17,6 +17,7 @@ import {
 } from "@/lib/pricing-import";
 import { type PricingStrategy, getStrategy } from "@/lib/pricing-strategies";
 import { AiRepricePanel } from "@/components/AiRepricePanel";
+import { SnapshotConfirmDialog } from "@/components/SnapshotConfirmDialog";
 import type {
   AppPrice,
   AppPricePoint,
@@ -117,6 +118,7 @@ export default function PricingPage() {
   const [overrideOpen, setOverrideOpen] = useState<string | null>(null);
   const [applying, setApplying] = useState(false);
   const [applied, setApplied] = useState(false);
+  const [snapshotDialog, setSnapshotDialog] = useState(false);
 
   // Sheet import flow
   const [territoriesMap, setTerritoriesMap] = useState<Map<string, string>>(
@@ -413,9 +415,6 @@ export default function PricingPage() {
     setApplying(true);
     setError("");
     try {
-      snapshotBeforeApply(
-        `Before base-price change → ${formatPrice(base.newPrice, base.currency)}`
-      );
       await postSchedule([
         base,
         ...overrides.filter((r) => r.territoryId !== baseTerritory),
@@ -444,7 +443,6 @@ export default function PricingPage() {
     setApplying(true);
     setError("");
     try {
-      snapshotBeforeApply("Before restore (auto-safety)");
       const manualRows = snapshot.rows.filter(
         (r) => r.manual && r.territoryId !== base
       );
@@ -552,8 +550,9 @@ export default function PricingPage() {
     }
   }
 
-  async function applyImport() {
+  async function applyImport(withSnapshot = true, snapshotName?: string) {
     if (!credentials || !importPreview) return;
+    setSnapshotDialog(false);
     setApplying(true);
     setError("");
     try {
@@ -587,7 +586,7 @@ export default function PricingPage() {
         }
       }
 
-      snapshotBeforeApply(`Before sheet import · ${importPreview.length} territories`);
+      if (withSnapshot) snapshotBeforeApply(snapshotName || `Before import · ${importPreview.length} territories`);
       await postSchedule(manual);
       setApplied(true);
       setImportPreview(null);
@@ -748,7 +747,7 @@ export default function PricingPage() {
                 Keep existing manual prices not in the sheet
               </label>
               <button
-                onClick={() => (isPro ? applyImport() : setPaywallOpen(true))}
+                onClick={() => (isPro ? setSnapshotDialog(true) : setPaywallOpen(true))}
                 disabled={applying || applied}
                 className="btn-glow rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 disabled:opacity-40 disabled:shadow-none transition"
               >
@@ -1047,6 +1046,13 @@ export default function PricingPage() {
         </div>
       )}
 
+      <SnapshotConfirmDialog
+        open={snapshotDialog}
+        defaultName={importPreview ? `Before import · ${importPreview.length} territories` : ""}
+        onSaveAndApply={(name) => applyImport(true, name)}
+        onSkipAndApply={() => applyImport(false)}
+        onCancel={() => setSnapshotDialog(false)}
+      />
       <PaywallModal
         open={paywallOpen}
         onClose={() => setPaywallOpen(false)}

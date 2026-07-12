@@ -13,6 +13,7 @@ import { takeSnapshot, type PriceSnapshot } from "@/lib/snapshots";
 import { buildCsv, parsePriceSheet, snapToPricePoint } from "@/lib/pricing-import";
 import { type PricingStrategy, getStrategy } from "@/lib/pricing-strategies";
 import { AiRepricePanel } from "@/components/AiRepricePanel";
+import { SnapshotConfirmDialog } from "@/components/SnapshotConfirmDialog";
 import type {
   Subscription,
   SubscriptionGroup,
@@ -100,6 +101,7 @@ export default function SubscriptionsPage() {
   const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
   const [applying, setApplying] = useState<{ done: number; total: number } | null>(null);
   const [applied, setApplied] = useState(false);
+  const [snapshotDialog, setSnapshotDialog] = useState(false);
   const [copiedPrompt, setCopiedPrompt] = useState(false);
   const [strategy, setStrategy] = useState<PricingStrategy>("ppp");
 
@@ -427,12 +429,13 @@ export default function SubscriptionsPage() {
     }
   }
 
-  async function applyImport() {
+  async function applyImport(withSnapshot = true, snapshotName?: string) {
     if (!credentials || !importPreview || !selectedSubId) return;
+    setSnapshotDialog(false);
     setError("");
     setApplying({ done: 0, total: importPreview.length });
     try {
-      snapshotBeforeApply(`Before sheet import · ${importPreview.length} territories`);
+      if (withSnapshot) snapshotBeforeApply(snapshotName || `Before import · ${importPreview.length} territories`);
       await postPrices(
         importPreview.map((r) => ({ territoryId: r.territoryId, pointId: r.pointId }))
       );
@@ -453,7 +456,6 @@ export default function SubscriptionsPage() {
     setError("");
     setApplying({ done: 0, total: snapshot.rows.length });
     try {
-      snapshotBeforeApply("Before restore (auto-safety)");
       await postPrices(
         snapshot.rows.map((r) => ({ territoryId: r.territoryId, pointId: r.pricePointId }))
       );
@@ -669,7 +671,7 @@ export default function SubscriptionsPage() {
               {importPreview && (
                   !applied ? (
                   <button
-                    onClick={() => (isPro ? applyImport() : setPaywallOpen(true))}
+                    onClick={() => (isPro ? setSnapshotDialog(true) : setPaywallOpen(true))}
                     disabled={applying !== null}
                     className="btn-glow rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 disabled:opacity-40 disabled:shadow-none transition"
                   >
@@ -834,6 +836,13 @@ export default function SubscriptionsPage() {
         </>
       )}
 
+      <SnapshotConfirmDialog
+        open={snapshotDialog}
+        defaultName={importPreview ? `Before import · ${importPreview.length} territories` : ""}
+        onSaveAndApply={(name) => applyImport(true, name)}
+        onSkipAndApply={() => applyImport(false)}
+        onCancel={() => setSnapshotDialog(false)}
+      />
       <PaywallModal
         open={paywallOpen}
         onClose={() => setPaywallOpen(false)}

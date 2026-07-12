@@ -90,7 +90,7 @@ export default function GooglePlayBulkPricingPage() {
             {
               step: "Preview the diff, apply once",
               detail:
-                "Every change is shown side-by-side before anything is written. One click applies all regions; a snapshot is saved automatically so you can roll back.",
+                "Every change is shown side-by-side before anything is written. One click applies all regions; save a snapshot first so you can roll back anytime.",
             },
           ].map((s, i) => (
             <li key={s.step} className="flex gap-4">

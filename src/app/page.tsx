@@ -113,7 +113,7 @@ const FEATURES = [
   {
     emoji: "⏪",
     title: "Snapshots & rollback",
-    body: "Every apply saves a snapshot first, automatically. Botched an import? One click puts every price back exactly as it was.",
+    body: "Save a snapshot before applying — then one click puts every price back exactly as it was.",
     saves: "your sanity",
   },
 ];
@@ -132,7 +132,7 @@ const STEPS = [
   {
     n: "3",
     title: "Apply once",
-    body: "One click writes all locales and territories. A snapshot is saved automatically so you can always roll back.",
+    body: "One click writes all locales and territories. Save a snapshot first so you can always roll back.",
   },
 ];
 

@@ -62,15 +62,9 @@ export function SnapshotPanel({
 
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 mb-6">
-      <h3 className="text-sm font-semibold mb-1">
-        Snapshots{" "}
-        <span className="text-zinc-500 font-normal">
-          — taken automatically before every apply
-        </span>
-      </h3>
+      <h3 className="text-sm font-semibold mb-1">Snapshots</h3>
       <p className="text-xs text-zinc-500 mb-3">
-        Made a mistake? Restore any snapshot and your prices go back exactly as
-        they were. Export to keep a backup outside the browser.
+        Restore any snapshot to roll prices back exactly as they were. Export to keep a backup outside the browser.
       </p>
 
       {onSave && (

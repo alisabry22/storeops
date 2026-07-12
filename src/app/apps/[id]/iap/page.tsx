@@ -13,6 +13,7 @@ import { takeSnapshot, type PriceSnapshot } from "@/lib/snapshots";
 import { buildCsv, parsePriceSheet, snapToPricePoint } from "@/lib/pricing-import";
 import { type PricingStrategy, getStrategy } from "@/lib/pricing-strategies";
 import { AiRepricePanel } from "@/components/AiRepricePanel";
+import { SnapshotConfirmDialog } from "@/components/SnapshotConfirmDialog";
 import type {
   InAppPurchase,
   InAppPurchasePrice,
@@ -110,6 +111,7 @@ export default function IapPage() {
   const [importProgress, setImportProgress] = useState(false);
   const [applying, setApplying] = useState(false);
   const [applied, setApplied] = useState(false);
+  const [snapshotDialog, setSnapshotDialog] = useState(false);
   const [copiedPrompt, setCopiedPrompt] = useState(false);
   const [strategy, setStrategy] = useState<PricingStrategy>("ppp");
 
@@ -319,7 +321,7 @@ export default function IapPage() {
     const included = merged.map((row, i) => ({
       type: "inAppPurchasePrices",
       id: `$p${i}`,
-      attributes: { startDate: null },
+      attributes: {},
       relationships: {
         inAppPurchasePricePoint: {
           data: { type: "inAppPurchasePricePoints", id: row.pointId },
@@ -349,12 +351,13 @@ export default function IapPage() {
     });
   }
 
-  async function applyImport() {
+  async function applyImport(withSnapshot = true, snapshotName?: string) {
     if (!credentials || !importPreview || !selectedIapId) return;
+    setSnapshotDialog(false);
     setError("");
     setApplying(true);
     try {
-      snapshotBeforeApply(`Before sheet import · ${importPreview.length} territories`);
+      if (withSnapshot) snapshotBeforeApply(snapshotName || `Before import · ${importPreview.length} territories`);
       await postPriceSchedule(
         importPreview.map((r) => ({ territoryId: r.territoryId, pointId: r.pointId }))
       );
@@ -374,7 +377,6 @@ export default function IapPage() {
     setError("");
     setApplying(true);
     try {
-      snapshotBeforeApply("Before restore (auto-safety)");
       await postPriceSchedule(
         snapshot.rows.map((r) => ({ territoryId: r.territoryId, pointId: r.pricePointId }))
       );
@@ -586,7 +588,7 @@ export default function IapPage() {
               {importPreview &&
                 (!applied ? (
                   <button
-                    onClick={() => (isPro ? applyImport() : setPaywallOpen(true))}
+                    onClick={() => (isPro ? setSnapshotDialog(true) : setPaywallOpen(true))}
                     disabled={applying}
                     className="btn-glow rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 disabled:opacity-40 disabled:shadow-none transition"
                   >
@@ -719,6 +721,13 @@ export default function IapPage() {
         </>
       )}
 
+      <SnapshotConfirmDialog
+        open={snapshotDialog}
+        defaultName={importPreview ? `Before import · ${importPreview.length} territories` : ""}
+        onSaveAndApply={(name) => applyImport(true, name)}
+        onSkipAndApply={() => applyImport(false)}
+        onCancel={() => setSnapshotDialog(false)}
+      />
       <PaywallModal
         open={paywallOpen}
         onClose={() => setPaywallOpen(false)}

@@ -118,7 +118,7 @@ export default function SubscriptionPricingPage() {
             },
             {
               title: "Roll back if needed",
-              body: "A snapshot is saved automatically before every apply. One click restores every territory to exactly where it was.",
+              body: "Save a snapshot before applying — one click restores every territory to exactly where it was.",
             },
           ].map((s, i) => (
             <div key={s.title} className="flex gap-5">

@@ -476,26 +476,57 @@ export default function PlayPage() {
             // under purchaseOptions[].regionalPricingAndAvailabilityConfigs.
             if (!product.modernRaw)
               throw new Error("Product payload missing — refresh and retry.");
-            const updated: GpOneTimeProduct = JSON.parse(JSON.stringify(product.modernRaw));
-            const po = (updated.purchaseOptions ?? []).find(
-              (p) => p.purchaseOptionId === product.purchaseOptionId
-            ) ?? updated.purchaseOptions?.[0];
-            if (!po?.regionalPricingAndAvailabilityConfigs)
-              throw new Error("Purchase option has no regional price configs.");
-            po.regionalPricingAndAvailabilityConfigs =
-              po.regionalPricingAndAvailabilityConfigs.map((rc) => {
-                const next = changes.get(rc.regionCode);
-                if (next === undefined || !rc.price) return rc;
-                return { ...rc, price: decimalToMoney(next, rc.price.currencyCode) };
-              });
-            await gpFetch(
-              gpCredentials,
-              `${API}/${selectedPackage}/oneTimeProducts/${selectedRef.productId}`,
-              {
-                method: "PATCH",
-                body: updated,
+
+            const CURRENCY_ERR_OTP = /Invalid currency for region code (\w+).*Expected (\w+) but got/;
+            const NOT_BILLABLE_OTP = /Region code (\w+) is not billable/;
+            const otpCorrections: Record<string, string> = {};
+            const otpNotBillable = new Set<string>([...GP_NOT_BILLABLE]);
+
+            for (let attempt = 0; attempt < 10; attempt++) {
+              const updated: GpOneTimeProduct = JSON.parse(JSON.stringify(product.modernRaw));
+              const po = (updated.purchaseOptions ?? []).find(
+                (p) => p.purchaseOptionId === product.purchaseOptionId
+              ) ?? updated.purchaseOptions?.[0];
+              if (!po?.regionalPricingAndAvailabilityConfigs)
+                throw new Error("Purchase option has no regional price configs.");
+
+              po.regionalPricingAndAvailabilityConfigs =
+                po.regionalPricingAndAvailabilityConfigs
+                  .filter((rc) => !otpNotBillable.has(rc.regionCode))
+                  .map((rc) => {
+                    const correctedCurrency =
+                      otpCorrections[rc.regionCode] ??
+                      requiredCurrency(rc.regionCode, rc.price?.currencyCode ?? "USD");
+                    const next = changes.get(rc.regionCode);
+                    const price = next !== undefined && rc.price
+                      ? decimalToMoney(next, correctedCurrency)
+                      : rc.price
+                        ? { ...rc.price, currencyCode: correctedCurrency }
+                        : rc.price;
+                    return { ...rc, price };
+                  });
+
+              try {
+                await gpFetch(
+                  gpCredentials,
+                  `${API}/${selectedPackage}/oneTimeProducts/${selectedRef.productId}`,
+                  { method: "PATCH", body: updated }
+                );
+                break;
+              } catch (e) {
+                if (!(e instanceof GpError)) throw e;
+                const msg = e.message;
+                const currMatch = msg.match(CURRENCY_ERR_OTP);
+                const billMatch = msg.match(NOT_BILLABLE_OTP);
+                if (currMatch) {
+                  otpCorrections[currMatch[1]] = currMatch[2];
+                } else if (billMatch) {
+                  otpNotBillable.add(billMatch[1]);
+                } else {
+                  throw e;
+                }
               }
-            );
+            }
           }
         } else {
           const sub = subs.find((s) => s.productId === selectedRef.productId);
