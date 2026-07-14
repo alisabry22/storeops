@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   LIFETIME_PRICE,
+  LIFETIME_FULL_PRICE,
   YEARLY_PRICE,
   useCheckoutUrls,
   useLicense,
@@ -170,18 +171,29 @@ export function PaywallModal({
                   Unlock applies with{" "}
                   <span className="text-emerald-400">StoreOps Pro</span>
                 </h2>
-                <p className="text-sm text-zinc-400 mb-4">
-                  Free covers browsing, previews, and CSV exports. Writing to
-                  the stores — bulk metadata, pricing, subscriptions, one-click
-                  rollback — is Pro.
+                <p className="text-sm text-zinc-400 mb-3">
+                  Free covers browsing, previews, and exports. Pro unlocks writing to both stores.
                 </p>
-                <ul className="text-sm text-zinc-300 space-y-1.5 mb-5">
-                  <li>✓ App Store + Google Play — both stores included</li>
-                  <li>✓ Bulk apply metadata across every locale</li>
-                  <li>✓ Reprice every storefront in one click</li>
-                  <li>✓ Subscription pricing — existing subscribers stay protected</li>
-                  <li>✓ Pre-apply snapshots + one-click rollback</li>
-                </ul>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mb-5">
+                  <div>
+                    <p className="text-zinc-500 font-medium mb-1">Free</p>
+                    <ul className="text-zinc-400 space-y-1">
+                      <li>✓ Browse apps &amp; prices</li>
+                      <li>✓ Preview changes (dry run)</li>
+                      <li>✓ Export CSV</li>
+                      <li>✓ AI reprice suggestions</li>
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="text-emerald-400 font-medium mb-1">Pro</p>
+                    <ul className="text-zinc-300 space-y-1">
+                      <li>✓ Apply pricing changes</li>
+                      <li>✓ Apply metadata changes</li>
+                      <li>✓ Subscription repricing</li>
+                      <li>✓ Snapshots &amp; rollback</li>
+                    </ul>
+                  </div>
+                </div>
               </>
             )}
 
@@ -193,7 +205,9 @@ export function PaywallModal({
                   rel="noopener noreferrer"
                   className="btn-glow block w-full text-center rounded-md bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 transition"
                 >
-                  Lifetime — {LIFETIME_PRICE} once, own it forever
+                  Lifetime —{" "}
+                  <span className="line-through opacity-60 font-normal">{LIFETIME_FULL_PRICE}</span>{" "}
+                  {LIFETIME_PRICE} once, own it forever
                 </a>
                 <a
                   href={yearlyUrl}

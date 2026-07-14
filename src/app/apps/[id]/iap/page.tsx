@@ -21,7 +21,6 @@ import type {
   InAppPurchasePricePoint,
   IapPriceRow,
   Territory,
-  AscResource,
 } from "@/lib/asc/types";
 import { formatIapType } from "@/lib/asc/types";
 
@@ -47,28 +46,22 @@ function formatPrice(price: string, currency: string): string {
   }
 }
 
-function resolveIapPrices(
-  scheduleData: AscResource<Record<string, never>>,
-  included: Array<InAppPurchasePrice | InAppPurchasePricePoint | Territory>
+function resolveManualPrices(
+  prices: InAppPurchasePrice[],
+  included: Array<InAppPurchasePricePoint | Territory>
 ): IapPriceRow[] {
-  const priceMap = new Map<string, InAppPurchasePrice>();
   const pointMap = new Map<string, InAppPurchasePricePoint>();
   const terrMap = new Map<string, Territory>();
 
   for (const inc of included) {
-    if (inc.type === "inAppPurchasePrices") priceMap.set(inc.id, inc as InAppPurchasePrice);
     if (inc.type === "inAppPurchasePricePoints") pointMap.set(inc.id, inc as InAppPurchasePricePoint);
     if (inc.type === "territories") terrMap.set(inc.id, inc as Territory);
   }
 
-  const manualPriceRefs = scheduleData.relationships?.manualPrices?.data;
-  if (!manualPriceRefs || !Array.isArray(manualPriceRefs)) return [];
-
   const rows: IapPriceRow[] = [];
-  for (const ref of manualPriceRefs) {
-    if (Array.isArray(ref)) continue;
-    const price = priceMap.get(ref.id);
-    if (!price) continue;
+  for (const price of prices) {
+    // Only current prices (startDate null = active now); skip future scheduled ones
+    if (price.attributes?.startDate !== null && price.attributes?.startDate !== undefined) continue;
 
     const pointRef = price.relationships?.inAppPurchasePricePoint?.data;
     const terrRef = price.relationships?.territory?.data;
@@ -160,17 +153,40 @@ export default function IapPage() {
       setError("");
       setCurrentPrices([]);
       try {
-        const response = await ascFetch<{
-          data: AscResource<Record<string, never>>;
-          included?: Array<InAppPurchasePrice | InAppPurchasePricePoint | Territory>;
-        }>(credentials, `/v1/inAppPurchasesV2/${iapId}/priceSchedule`, {
-          params: {
-            include:
-              "manualPrices,manualPrices.inAppPurchasePricePoint,manualPrices.territory",
-          },
-        });
-        const rows = resolveIapPrices(response.data, response.included ?? []);
-        setCurrentPrices(rows.sort((a, b) => a.territoryId.localeCompare(b.territoryId)));
+        // The IAP ID doubles as the price schedule ID per Apple's API design.
+        // Fetch manual + automatic prices in parallel; manual takes priority for same territory.
+        const params = {
+          include: "inAppPurchasePricePoint,territory",
+          "fields[territories]": "currency",
+        };
+        const [manual, automatic] = await Promise.all([
+          ascFetchAllFull<InAppPurchasePrice, InAppPurchasePricePoint | Territory>(
+            credentials,
+            `/v1/inAppPurchasePriceSchedules/${iapId}/manualPrices`,
+            params
+          ).catch((e) => {
+            if (e instanceof AscError && e.status === 404) return { data: [], included: [] };
+            throw e;
+          }),
+          ascFetchAllFull<InAppPurchasePrice, InAppPurchasePricePoint | Territory>(
+            credentials,
+            `/v1/inAppPurchasePriceSchedules/${iapId}/automaticPrices`,
+            params
+          ).catch((e) => {
+            if (e instanceof AscError && e.status === 404) return { data: [], included: [] };
+            throw e;
+          }),
+        ]);
+
+        const manualRows = resolveManualPrices(manual.data, manual.included);
+        const autoRows = resolveManualPrices(automatic.data, automatic.included);
+        // Manual prices override auto prices for the same territory
+        const manualTerritories = new Set(manualRows.map((r) => r.territoryId));
+        const merged = [
+          ...manualRows,
+          ...autoRows.filter((r) => !manualTerritories.has(r.territoryId)),
+        ];
+        setCurrentPrices(merged.sort((a, b) => a.territoryId.localeCompare(b.territoryId)));
       } catch (e) {
         if (e instanceof AscError && e.status === 404) {
           // No price schedule yet — IAP has never been priced
@@ -200,11 +216,19 @@ export default function IapPage() {
     const cached = allPointsCache.get(selectedIapId);
     if (cached) return cached;
 
-    const { data } = await ascFetchAllFull<InAppPurchasePricePoint>(
-      credentials!,
-      `/v1/inAppPurchasesV2/${selectedIapId}/pricePoints`,
-      { include: "territory", limit: "8000" }
-    );
+    let data: InAppPurchasePricePoint[];
+    try {
+      ({ data } = await ascFetchAllFull<InAppPurchasePricePoint>(
+        credentials!,
+        `/v2/inAppPurchases/${selectedIapId}/pricePoints`,
+        { include: "territory", limit: "8000" }
+      ));
+    } catch (e) {
+      if (e instanceof AscError && e.status === 404) {
+        return new Map();
+      }
+      throw e;
+    }
 
     const byTerritory = new Map<string, InAppPurchasePricePoint[]>();
     for (const p of data) {
@@ -326,16 +350,23 @@ export default function IapPage() {
       merged.push(row);
     }
 
+    // Apple requires local IDs in the format "${name}" (literal curly braces)
+    const localId = (i: number) => "${p" + i + "}";
+
+    // baseTerritory is required; prefer USA, otherwise use the first territory in the set
+    const baseTerritoryId =
+      merged.find((r) => r.territoryId === "USA")?.territoryId ?? merged[0]?.territoryId ?? "USA";
+
     const included = merged.map((row, i) => ({
       type: "inAppPurchasePrices",
-      id: `$p${i}`,
-      attributes: {},
+      id: localId(i),
+      attributes: { startDate: null },
       relationships: {
+        inAppPurchaseV2: {
+          data: { type: "inAppPurchases", id: selectedIapId },
+        },
         inAppPurchasePricePoint: {
           data: { type: "inAppPurchasePricePoints", id: row.pointId },
-        },
-        territory: {
-          data: { type: "territories", id: row.territoryId },
         },
       },
     }));
@@ -347,10 +378,13 @@ export default function IapPage() {
           type: "inAppPurchasePriceSchedules",
           relationships: {
             inAppPurchase: {
-              data: { type: "inAppPurchasesV2", id: selectedIapId },
+              data: { type: "inAppPurchases", id: selectedIapId },
+            },
+            baseTerritory: {
+              data: { type: "territories", id: baseTerritoryId },
             },
             manualPrices: {
-              data: merged.map((_, i) => ({ type: "inAppPurchasePrices", id: `$p${i}` })),
+              data: merged.map((_, i) => ({ type: "inAppPurchasePrices", id: localId(i) })),
             },
           },
         },

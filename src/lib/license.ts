@@ -18,7 +18,8 @@ export const CHECKOUT_URL =
 // never advertise a product that can't be bought.
 export const LIFETIME_CHECKOUT_URL =
   process.env.NEXT_PUBLIC_LS_LIFETIME_CHECKOUT_URL ?? "";
-export const LIFETIME_PRICE = "$69";
+export const LIFETIME_PRICE = "$79";
+export const LIFETIME_FULL_PRICE = "$129";
 export const YEARLY_PRICE = "$49.99";
 
 interface LicenseState {

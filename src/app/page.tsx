@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useCredentials } from "@/lib/store";
 import {
   LIFETIME_PRICE,
+  LIFETIME_FULL_PRICE,
   YEARLY_PRICE,
   useCheckoutUrls,
 } from "@/lib/license";
@@ -361,10 +362,14 @@ export default function LandingPage() {
               <span className="text-sm font-normal text-zinc-500"> forever</span>
             </p>
             <ul className="space-y-2 text-sm text-zinc-400">
-              <li>✓ Connect &amp; browse everything</li>
-              <li>✓ Preview every change (dry run)</li>
-              <li>✓ Export prices &amp; AI prompts</li>
-              <li className="text-zinc-500">✗ Applying changes to Apple</li>
+              <li>✓ Connect App Store &amp; Google Play</li>
+              <li>✓ Browse all apps, IAPs &amp; subscriptions</li>
+              <li>✓ Preview every change as a diff</li>
+              <li>✓ Export current prices as CSV</li>
+              <li>✓ Generate AI repricing suggestions</li>
+              <li className="text-zinc-600 mt-1">✗ Apply pricing changes</li>
+              <li className="text-zinc-600">✗ Apply metadata changes</li>
+              <li className="text-zinc-600">✗ Snapshots &amp; rollback</li>
             </ul>
           </div>
           {lifetimeUrl && (
@@ -376,14 +381,18 @@ export default function LandingPage() {
                 Lifetime
               </p>
               <p className="text-3xl font-bold mb-4">
+                <span className="line-through text-zinc-500 text-xl font-normal mr-1">{LIFETIME_FULL_PRICE}</span>
                 {LIFETIME_PRICE}
                 <span className="text-sm font-normal text-zinc-500"> once</span>
               </p>
               <ul className="space-y-2 text-sm text-zinc-300">
                 <li>✓ Everything in Pro, forever</li>
+                <li>✓ App Store + Google Play — both stores</li>
+                <li>✓ Bulk pricing — IAPs &amp; subscriptions</li>
+                <li>✓ Bulk metadata across all locales</li>
+                <li>✓ AI repricing — apply in one click</li>
+                <li>✓ Snapshots &amp; one-click rollback</li>
                 <li>✓ All future features included</li>
-                <li>✓ No renewal, no subscription</li>
-                <li>✓ All 175 storefronts, all your apps</li>
               </ul>
               <a
                 href={lifetimeUrl}
@@ -410,10 +419,12 @@ export default function LandingPage() {
               <span className="text-sm font-normal text-zinc-500"> /year</span>
             </p>
             <ul className="space-y-2 text-sm text-zinc-300">
-              <li>✓ Every apply — metadata, prices, subscriptions</li>
+              <li>✓ App Store + Google Play — both stores</li>
+              <li>✓ Bulk pricing — IAPs &amp; subscriptions</li>
+              <li>✓ Bulk metadata across all locales</li>
+              <li>✓ AI repricing — apply in one click</li>
               <li>✓ Snapshots &amp; one-click rollback</li>
               <li>✓ Subscriber-safe subscription repricing</li>
-              <li>✓ All 175 storefronts, all your apps</li>
             </ul>
             <a
               href={yearlyUrl}
