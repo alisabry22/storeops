@@ -589,45 +589,18 @@ export default function SubscriptionsPage() {
         ) : subscriptions.length === 0 ? (
           <p className="text-sm text-zinc-400">No subscriptions found for this app.</p>
         ) : (
-          <div className="max-w-md">
-            <input
-              list="sub-list"
-              value={
-                subscriptions.find((s) => s.id === selectedSubId)
-                  ? `${subscriptions.find((s) => s.id === selectedSubId)!.attributes.name} — ${formatPeriod(
-                      subscriptions.find((s) => s.id === selectedSubId)!.attributes.subscriptionPeriod
-                    )} · ${subscriptions.find((s) => s.id === selectedSubId)!.attributes.productId}`
-                  : ""
-              }
-              onChange={(e) => {
-                const text = e.target.value;
-                const found = subscriptions.find(
-                  (s) =>
-                    `${s.attributes.name} — ${formatPeriod(s.attributes.subscriptionPeriod)} · ${s.attributes.productId}` ===
-                    text
-                );
-                if (found) setSelectedSubId(found.id);
-              }}
-              placeholder="Choose a subscription…  (type to search)"
-              className="w-full rounded-md bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
-            />
-            <datalist id="sub-list">
-              {subscriptions.map((s) => (
-                <option
-                  key={s.id}
-                  value={`${s.attributes.name} — ${formatPeriod(s.attributes.subscriptionPeriod)} · ${s.attributes.productId}`}
-                />
-              ))}
-            </datalist>
-            {selectedSubId && subscriptions.length > 1 && (
-              <p className="mt-1.5 text-xs text-zinc-500">
-                Selected:{" "}
-                <span className="text-zinc-300 font-mono">
-                  {subscriptions.find((s) => s.id === selectedSubId)?.attributes.productId}
-                </span>
-              </p>
-            )}
-          </div>
+          <select
+            value={selectedSubId}
+            onChange={(e) => setSelectedSubId(e.target.value)}
+            className="w-full max-w-md rounded-md bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
+          >
+            <option value="">Choose a subscription…</option>
+            {subscriptions.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.attributes.name} — {formatPeriod(s.attributes.subscriptionPeriod)} · {s.attributes.productId}
+              </option>
+            ))}
+          </select>
         )}
       </div>
 

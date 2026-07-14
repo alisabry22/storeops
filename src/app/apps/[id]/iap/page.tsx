@@ -541,35 +541,18 @@ export default function IapPage() {
         ) : iaps.length === 0 ? (
           <p className="text-sm text-zinc-400">No in-app purchases found for this app.</p>
         ) : (
-          <div className="max-w-md">
-            <input
-              list="iap-list"
-              value={
-                selectedIap
-                  ? `${selectedIap.attributes.name} · ${formatIapType(selectedIap.attributes.inAppPurchaseType)} · ${selectedIap.attributes.productId}`
-                  : ""
-              }
-              onChange={(e) => {
-                const text = e.target.value;
-                const found = iaps.find(
-                  (i) =>
-                    `${i.attributes.name} · ${formatIapType(i.attributes.inAppPurchaseType)} · ${i.attributes.productId}` ===
-                    text
-                );
-                if (found) setSelectedIapId(found.id);
-              }}
-              placeholder="Choose an IAP… (type to search)"
-              className="w-full rounded-md bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
-            />
-            <datalist id="iap-list">
-              {iaps.map((i) => (
-                <option
-                  key={i.id}
-                  value={`${i.attributes.name} · ${formatIapType(i.attributes.inAppPurchaseType)} · ${i.attributes.productId}`}
-                />
-              ))}
-            </datalist>
-          </div>
+          <select
+            value={selectedIapId}
+            onChange={(e) => setSelectedIapId(e.target.value)}
+            className="w-full max-w-md rounded-md bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
+          >
+            <option value="">Choose an IAP…</option>
+            {iaps.map((i) => (
+              <option key={i.id} value={i.id}>
+                {i.attributes.name} · {formatIapType(i.attributes.inAppPurchaseType)} · {i.attributes.productId}
+              </option>
+            ))}
+          </select>
         )}
       </div>
 
