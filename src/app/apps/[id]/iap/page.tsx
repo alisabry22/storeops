@@ -14,6 +14,7 @@ import { buildCsv, parsePriceSheet, snapToPricePoint } from "@/lib/pricing-impor
 import { type PricingStrategy, getStrategy } from "@/lib/pricing-strategies";
 import { AiRepricePanel } from "@/components/AiRepricePanel";
 import { SnapshotConfirmDialog } from "@/components/SnapshotConfirmDialog";
+import { ApplySuccessDialog } from "@/components/ApplySuccessDialog";
 import type {
   InAppPurchase,
   InAppPurchasePrice,
@@ -111,6 +112,11 @@ export default function IapPage() {
   const [importProgress, setImportProgress] = useState(false);
   const [applying, setApplying] = useState(false);
   const [applied, setApplied] = useState(false);
+  const [applySummary, setApplySummary] = useState<{
+    productLabel: string;
+    regionsChanged: number;
+    warnings: string[];
+  } | null>(null);
   const [snapshotDialog, setSnapshotDialog] = useState(false);
   const [copiedPrompt, setCopiedPrompt] = useState(false);
   const [strategy, setStrategy] = useState<PricingStrategy>("ppp");
@@ -184,6 +190,7 @@ export default function IapPage() {
       setImportPreview(null);
       setSheetText("");
       setApplied(false);
+      setApplySummary(null);
       loadPrices(selectedIapId);
     }
   }, [selectedIapId, loadPrices]);
@@ -216,6 +223,7 @@ export default function IapPage() {
     if (!credentials || !_text.trim() || !selectedIapId) return;
     setError("");
     setApplied(false);
+    setApplySummary(null);
     setImportPreview(null);
     setImportProgress(true);
 
@@ -361,6 +369,12 @@ export default function IapPage() {
       await postPriceSchedule(
         importPreview.map((r) => ({ territoryId: r.territoryId, pointId: r.pointId }))
       );
+      setApplySummary({
+        productLabel:
+          iaps.find((i) => i.id === selectedIapId)?.attributes.name ?? selectedIapId,
+        regionsChanged: importPreview.length,
+        warnings: importWarnings,
+      });
       setApplied(true);
       setImportPreview(null);
       setSheetText("");
@@ -380,6 +394,12 @@ export default function IapPage() {
       await postPriceSchedule(
         snapshot.rows.map((r) => ({ territoryId: r.territoryId, pointId: r.pricePointId }))
       );
+      setApplySummary({
+        productLabel:
+          iaps.find((i) => i.id === selectedIapId)?.attributes.name ?? selectedIapId,
+        regionsChanged: snapshot.rows.length,
+        warnings: [],
+      });
       setApplied(true);
       await loadPrices(selectedIapId);
     } catch (e) {
@@ -464,10 +484,13 @@ export default function IapPage() {
         </p>
       )}
 
-      {applied && (
-        <p className="text-sm text-emerald-400 bg-emerald-950/40 border border-emerald-900 rounded-md px-3 py-2 mb-4">
-          ✓ IAP prices updated across all territories.
-        </p>
+      {applySummary && (
+        <ApplySuccessDialog
+          productLabel={applySummary.productLabel}
+          regionsChanged={applySummary.regionsChanged}
+          warnings={applySummary.warnings}
+          onClose={() => setApplySummary(null)}
+        />
       )}
 
       {/* IAP selector */}

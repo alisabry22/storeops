@@ -18,6 +18,7 @@ import {
 import { type PricingStrategy, getStrategy } from "@/lib/pricing-strategies";
 import { AiRepricePanel } from "@/components/AiRepricePanel";
 import { SnapshotConfirmDialog } from "@/components/SnapshotConfirmDialog";
+import { ApplySuccessDialog } from "@/components/ApplySuccessDialog";
 import type {
   AppPrice,
   AppPricePoint,
@@ -118,6 +119,11 @@ export default function PricingPage() {
   const [overrideOpen, setOverrideOpen] = useState<string | null>(null);
   const [applying, setApplying] = useState(false);
   const [applied, setApplied] = useState(false);
+  const [applySummary, setApplySummary] = useState<{
+    productLabel: string;
+    regionsChanged: number;
+    warnings: string[];
+  } | null>(null);
   const [snapshotDialog, setSnapshotDialog] = useState(false);
 
   // Sheet import flow
@@ -254,6 +260,7 @@ export default function PricingPage() {
     setPreviewing(true);
     setError("");
     setApplied(false);
+    setApplySummary(null);
     try {
       const { data: equalized, included } = await ascFetchAllFull<
         AppPricePoint,
@@ -419,6 +426,11 @@ export default function PricingPage() {
         base,
         ...overrides.filter((r) => r.territoryId !== baseTerritory),
       ]);
+      setApplySummary({
+        productLabel: "App pricing matrix",
+        regionsChanged: preview.length,
+        warnings: [],
+      });
       setApplied(true);
       setPreview(null);
       setSelectedPointId("");
@@ -453,6 +465,11 @@ export default function PricingPage() {
         ],
         base
       );
+      setApplySummary({
+        productLabel: "App pricing matrix",
+        regionsChanged: snapshot.rows.length,
+        warnings: [],
+      });
       setApplied(true);
       setNoSchedule(false);
       await loadCurrent();
@@ -489,6 +506,7 @@ export default function PricingPage() {
     if (!credentials || !text.trim()) return;
     setError("");
     setApplied(false);
+    setApplySummary(null);
     setImportPreview(null);
 
     const { rows, warnings } = parsePriceSheet(text);
@@ -588,6 +606,11 @@ export default function PricingPage() {
 
       if (withSnapshot) snapshotBeforeApply(snapshotName || `Before import · ${importPreview.length} territories`);
       await postSchedule(manual);
+      setApplySummary({
+        productLabel: "App pricing matrix",
+        regionsChanged: importPreview.length,
+        warnings: importWarnings,
+      });
       setApplied(true);
       setImportPreview(null);
       setSheetText("");
@@ -665,10 +688,13 @@ export default function PricingPage() {
         </p>
       )}
 
-      {applied && (
-        <p className="text-sm text-emerald-400 bg-emerald-950/40 border border-emerald-900 rounded-md px-3 py-2 mb-4">
-          ✓ Price schedule applied. That just saved you ~30 minutes of clicking.
-        </p>
+      {applySummary && (
+        <ApplySuccessDialog
+          productLabel={applySummary.productLabel}
+          regionsChanged={applySummary.regionsChanged}
+          warnings={applySummary.warnings}
+          onClose={() => setApplySummary(null)}
+        />
       )}
 
       {/* ---- Sheet import flow ---- */}

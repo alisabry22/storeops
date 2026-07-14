@@ -4,11 +4,17 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { PaywallModal } from "@/components/Paywall";
 import { RequireAccount } from "@/components/RequireAccount";
+import { SnapshotConfirmDialog } from "@/components/SnapshotConfirmDialog";
+import { ApplySuccessDialog } from "@/components/ApplySuccessDialog";
 import { SnapshotPanel } from "@/components/SnapshotPanel";
 import { useIsPro } from "@/lib/license";
 import { takeSnapshot, type PriceSnapshot } from "@/lib/snapshots";
 import { buildCsv, parsePriceSheet } from "@/lib/pricing-import";
-import { STRATEGIES, type PricingStrategy, getStrategy } from "@/lib/pricing-strategies";
+import {
+  STRATEGIES,
+  type PricingStrategy,
+  getStrategy,
+} from "@/lib/pricing-strategies";
 import { storeServiceAccount } from "@/lib/gp/auth";
 import { gpFetch, GpError } from "@/lib/gp/client";
 import { useGpStore } from "@/lib/gp/store";
@@ -52,7 +58,9 @@ type ProductRef =
   | { kind: "sub"; productId: string; basePlanId: string; title: string };
 
 function refKey(r: ProductRef): string {
-  return r.kind === "iap" ? `iap:${r.productId}` : `sub:${r.productId}:${r.basePlanId}`;
+  return r.kind === "iap"
+    ? `iap:${r.productId}`
+    : `sub:${r.productId}:${r.basePlanId}`;
 }
 
 function refLabel(r: ProductRef): string {
@@ -71,7 +79,9 @@ interface GpImportRow {
 function formatPrice(price: string, currency: string): string {
   const n = Number(price);
   try {
-    return new Intl.NumberFormat("en", { style: "currency", currency }).format(n);
+    return new Intl.NumberFormat("en", { style: "currency", currency }).format(
+      n,
+    );
   } catch {
     return `${price} ${currency}`;
   }
@@ -104,9 +114,15 @@ export default function PlayPage() {
   // Import flow
   const [sheetText, setSheetText] = useState("");
   const [importWarnings, setImportWarnings] = useState<string[]>([]);
-  const [importPreview, setImportPreview] = useState<GpImportRow[] | null>(null);
+  const [importPreview, setImportPreview] = useState<GpImportRow[] | null>(
+    null,
+  );
   const [applying, setApplying] = useState(false);
-  const [applied, setApplied] = useState(false);
+  const [applySummary, setApplySummary] = useState<{
+    productLabel: string;
+    regionsChanged: number;
+    warnings: string[];
+  } | null>(null);
   const [copiedPrompt, setCopiedPrompt] = useState(false);
   const [strategy, setStrategy] = useState<PricingStrategy>("ppp");
   const [customInstructions, setCustomInstructions] = useState("");
@@ -117,6 +133,7 @@ export default function PlayPage() {
   // Pro gate + snapshots
   const isPro = useIsPro();
   const [paywallOpen, setPaywallOpen] = useState(false);
+  const [snapshotDialog, setSnapshotDialog] = useState(false);
   const [snapRefresh, setSnapRefresh] = useState(0);
 
   useEffect(() => setHydrated(true), []);
@@ -148,7 +165,8 @@ export default function PlayPage() {
     return refs;
   }, [iaps, subs]);
 
-  const selectedRef = productRefs.find((r) => refKey(r) === selectedRefKey) ?? null;
+  const selectedRef =
+    productRefs.find((r) => refKey(r) === selectedRefKey) ?? null;
 
   /** Current region prices for the selected product. */
   const currentPrices = useMemo<GpPriceRow[]>(() => {
@@ -161,7 +179,9 @@ export default function PlayPage() {
         .sort((a, b) => a.regionCode.localeCompare(b.regionCode));
     }
     const sub = subs.find((s) => s.productId === selectedRef.productId);
-    const plan = sub?.basePlans?.find((b) => b.basePlanId === selectedRef.basePlanId);
+    const plan = sub?.basePlans?.find(
+      (b) => b.basePlanId === selectedRef.basePlanId,
+    );
     if (!plan?.regionalConfigs) return [];
     return plan.regionalConfigs
       .filter((rc) => rc.price)
@@ -223,7 +243,9 @@ export default function PlayPage() {
           // Prices are decimal-normalized here so downstream code never
           // touches micros or Money conversion directly.
           const po = p.purchaseOptions?.[0];
-          const priceRows: GpPriceRow[] = (po?.regionalPricingAndAvailabilityConfigs ?? [])
+          const priceRows: GpPriceRow[] = (
+            po?.regionalPricingAndAvailabilityConfigs ?? []
+          )
             .filter((rc) => rc.price)
             .map((rc) => ({
               regionCode: rc.regionCode,
@@ -258,12 +280,13 @@ export default function PlayPage() {
           for (const p of page.inappproduct ?? []) {
             // Skip legacy subscription-typed entries — managed via /subscriptions.
             if (p.purchaseType === "subscription") continue;
-            const priceRows: GpPriceRow[] = Object.entries(p.prices ?? {})
-              .map(([regionCode, mp]) => ({
+            const priceRows: GpPriceRow[] = Object.entries(p.prices ?? {}).map(
+              ([regionCode, mp]) => ({
                 regionCode,
                 currency: mp.currency,
                 price: microsToDecimal(mp.priceMicros),
-              }));
+              }),
+            );
             legacy.push({
               legacy: true,
               productId: p.sku,
@@ -305,7 +328,11 @@ export default function PlayPage() {
       subError = e instanceof Error ? e.message : String(e);
     }
 
-    setError(iapError && subError ? `${iapError}  ·  ${subError}` : iapError || subError);
+    setError(
+      iapError && subError
+        ? `${iapError}  ·  ${subError}`
+        : iapError || subError,
+    );
     setLoadingProducts(false);
   }, [gpCredentials, selectedPackage]);
 
@@ -313,7 +340,7 @@ export default function PlayPage() {
     if (selectedPackage) {
       setImportPreview(null);
       setSheetText("");
-      setApplied(false);
+      setApplySummary(null);
       loadProducts();
     }
   }, [selectedPackage, loadProducts]);
@@ -344,7 +371,10 @@ export default function PlayPage() {
 
     // Constraints block injected after the CSV so ChatGPT respects Google Play limits.
     const capsNote = Object.entries(GP_USD_PRICE_CAPS)
-      .map(([code, { min, max }]) => `  - ${code}: min $${min} USD, max $${max} USD`)
+      .map(
+        ([code, { min, max }]) =>
+          `  - ${code}: min $${min} USD, max $${max} USD`,
+      )
       .join("\n");
     const constraints = [
       "",
@@ -373,15 +403,22 @@ export default function PlayPage() {
     if (currentPrices.length === 0) return;
     setAiRepricing(true);
     setAiError("");
+    setApplySummary(null);
     try {
       const csv = buildCsv(exportableRows());
       const res = await fetch("/api/ai-reprice", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ csv, strategy, customInstructions, platform: "android" }),
+        body: JSON.stringify({
+          csv,
+          strategy,
+          customInstructions,
+          platform: "android",
+        }),
       });
-      const data = await res.json() as { csv?: string; error?: string };
-      if (!res.ok || !data.csv) throw new Error(data.error ?? "AI reprice failed");
+      const data = (await res.json()) as { csv?: string; error?: string };
+      if (!res.ok || !data.csv)
+        throw new Error(data.error ?? "AI reprice failed");
       // Drop the result into the sheet text and run preview immediately
       setSheetText(data.csv);
       const { rows, warnings } = parsePriceSheet(data.csv, { codeLength: 2 });
@@ -389,12 +426,21 @@ export default function PlayPage() {
       const warns: string[] = [...warnings];
       for (const row of rows) {
         const current = currentByRegion.get(row.territoryId);
-        if (!current) { warns.push(`${row.territoryId}: not in this product's regional pricing — skipped`); continue; }
-        preview.push({ regionCode: row.territoryId, currency: current.currency, currentPrice: current.price, newPrice: String(row.price) });
+        if (!current) {
+          warns.push(
+            `${row.territoryId}: not in this product's regional pricing — skipped`,
+          );
+          continue;
+        }
+        preview.push({
+          regionCode: row.territoryId,
+          currency: current.currency,
+          currentPrice: current.price,
+          newPrice: String(row.price),
+        });
       }
       setImportWarnings(warns);
       setImportPreview(preview.length > 0 ? preview : null);
-      setApplied(false);
     } catch (e) {
       setAiError(e instanceof Error ? e.message : "AI reprice failed");
     } finally {
@@ -404,14 +450,14 @@ export default function PlayPage() {
 
   function previewImport() {
     setError("");
-    setApplied(false);
+    setApplySummary(null);
     const { rows, warnings } = parsePriceSheet(sheetText, { codeLength: 2 });
     const preview: GpImportRow[] = [];
     for (const row of rows) {
       const current = currentByRegion.get(row.territoryId);
       if (!current) {
         warnings.push(
-          `${row.territoryId}: not in this product's regional pricing — skipped. Add it in Play Console first (Monetize → select product → Set prices → add region), then re-import.`
+          `${row.territoryId}: not in this product's regional pricing — skipped. Add it in Play Console first (Monetize → select product → Set prices → add region), then re-import.`,
         );
         continue;
       }
@@ -428,39 +474,33 @@ export default function PlayPage() {
 
   /** Apply a map of regionCode → new decimal price to the selected product. */
   const applyChanges = useCallback(
-    async (changes: Map<string, number>, label: string) => {
+    async (changes: Map<string, number>) => {
       if (!gpCredentials || !selectedRef || changes.size === 0) return;
       setApplying(true);
       setError("");
-      setApplied(false);
+      setApplySummary(null);
       try {
-        // Safety snapshot of current state before we touch Google
-        takeSnapshot({
-          appId: selectedPackage,
-          scope: snapshotScope,
-          label,
-          rows: currentPrices.map((r) => ({
-            territoryId: r.regionCode,
-            pricePointId: "",
-            customerPrice: r.price,
-            currency: r.currency,
-          })),
-        });
-        setSnapRefresh((n) => n + 1);
-
         if (selectedRef.kind === "iap") {
-          const product = iaps.find((p) => p.productId === selectedRef.productId);
-          if (!product) throw new Error("Product not loaded — refresh and retry.");
+          const product = iaps.find(
+            (p) => p.productId === selectedRef.productId,
+          );
+          if (!product)
+            throw new Error("Product not loaded — refresh and retry.");
 
           if (product.legacy) {
             // Legacy /inappproducts path — prices are micros on a flat map.
             if (!product.legacyRaw)
-              throw new Error("Legacy product payload missing — refresh and retry.");
+              throw new Error(
+                "Legacy product payload missing — refresh and retry.",
+              );
             const prices = { ...(product.legacyRaw.prices ?? {}) };
             for (const [region, price] of changes) {
               const currency = currentByRegion.get(region)?.currency;
               if (!currency) continue;
-              prices[region] = { priceMicros: decimalToMicros(price), currency };
+              prices[region] = {
+                priceMicros: decimalToMicros(price),
+                currency,
+              };
             }
             await gpFetch(
               gpCredentials,
@@ -469,48 +509,76 @@ export default function PlayPage() {
                 method: "PUT",
                 params: { autoConvertMissingPrices: "true" },
                 body: { ...product.legacyRaw, prices },
-              }
+              },
             );
           } else {
-            // Modern /oneTimeProducts path — prices are Money objects nested
-            // under purchaseOptions[].regionalPricingAndAvailabilityConfigs.
-            if (!product.modernRaw)
+            // Modern one-time products path. Apps migrated to the new Publishing
+            // API reject the entire legacy /inappproducts namespace — list, get,
+            // update, patch, AND batchUpdate — with 403 "Please migrate to the
+            // new publishing API". batchUpdate routes through the same disabled
+            // collection, so it cannot work for migrated apps. The correct write
+            // path is monetization.onetimeproducts PATCH, which takes a
+            // OneTimeProduct body and Money prices on
+            // purchaseOptions[].regionalPricingAndAvailabilityConfigs (no micros).
+            if (!product.modernRaw || !product.purchaseOptionId)
               throw new Error("Product payload missing — refresh and retry.");
 
-            const CURRENCY_ERR_OTP = /Invalid currency for region code (\w+).*Expected (\w+) but got/;
+            const modern: GpOneTimeProduct = JSON.parse(
+              JSON.stringify(product.modernRaw),
+            );
+            const po = (modern.purchaseOptions ?? []).find(
+              (p) => p.purchaseOptionId === product.purchaseOptionId,
+            );
+            if (!po)
+              throw new Error("Purchase option not found — refresh and retry.");
+
+            const CURRENCY_ERR_OTP =
+              /Invalid currency for region code (\w+).*Expected (\w+) but got/;
             const NOT_BILLABLE_OTP = /Region code (\w+) is not billable/;
             const otpCorrections: Record<string, string> = {};
             const otpNotBillable = new Set<string>([...GP_NOT_BILLABLE]);
 
             for (let attempt = 0; attempt < 10; attempt++) {
-              const updated: GpOneTimeProduct = JSON.parse(JSON.stringify(product.modernRaw));
-              const po = (updated.purchaseOptions ?? []).find(
-                (p) => p.purchaseOptionId === product.purchaseOptionId
-              ) ?? updated.purchaseOptions?.[0];
-              if (!po?.regionalPricingAndAvailabilityConfigs)
-                throw new Error("Purchase option has no regional price configs.");
-
-              po.regionalPricingAndAvailabilityConfigs =
-                po.regionalPricingAndAvailabilityConfigs
-                  .filter((rc) => !otpNotBillable.has(rc.regionCode))
-                  .map((rc) => {
-                    const correctedCurrency =
-                      otpCorrections[rc.regionCode] ??
-                      requiredCurrency(rc.regionCode, rc.price?.currencyCode ?? "USD");
-                    const next = changes.get(rc.regionCode);
-                    const price = next !== undefined && rc.price
-                      ? decimalToMoney(next, correctedCurrency)
-                      : rc.price
-                        ? { ...rc.price, currencyCode: correctedCurrency }
-                        : rc.price;
-                    return { ...rc, price };
-                  });
+              po.regionalPricingAndAvailabilityConfigs = (
+                po.regionalPricingAndAvailabilityConfigs ?? []
+              )
+                .filter((rc) => !otpNotBillable.has(rc.regionCode))
+                .map((rc) => {
+                  const storedCurrency = rc.price?.currencyCode ?? "USD";
+                  const correctedCurrency =
+                    otpCorrections[rc.regionCode] ??
+                    requiredCurrency(rc.regionCode, storedCurrency);
+                  const next = changes.get(rc.regionCode);
+                  if (next !== undefined) {
+                    return {
+                      ...rc,
+                      price: decimalToMoney(next, correctedCurrency),
+                    };
+                  }
+                  // Preserve existing price, but apply any currency correction.
+                  return correctedCurrency !== storedCurrency
+                    ? {
+                        ...rc,
+                        price: {
+                          ...rc.price!,
+                          currencyCode: correctedCurrency,
+                        },
+                      }
+                    : rc;
+                });
 
               try {
                 await gpFetch(
                   gpCredentials,
-                  `${API}/${selectedPackage}/oneTimeProducts/${selectedRef.productId}`,
-                  { method: "PATCH", body: updated }
+                  `${API}/${selectedPackage}/onetimeproducts/${selectedRef.productId}`,
+                  {
+                    method: "PATCH",
+                    params: {
+                      updateMask: "purchaseOptions",
+                      "regionsVersion.version": "2022/02",
+                    },
+                    body: modern,
+                  },
                 );
                 break;
               } catch (e) {
@@ -530,7 +598,8 @@ export default function PlayPage() {
           }
         } else {
           const sub = subs.find((s) => s.productId === selectedRef.productId);
-          if (!sub) throw new Error("Subscription not loaded — refresh and retry.");
+          if (!sub)
+            throw new Error("Subscription not loaded — refresh and retry.");
 
           // Google validates ALL regionalConfigs against the 2022/02 spec on every
           // PATCH — even regions we didn't change. Stale currencies (EUR for BG,
@@ -538,10 +607,12 @@ export default function PlayPage() {
           // in the message. We parse that, correct the payload, and retry until all
           // mismatches are resolved. The static map seeds known corrections so they
           // don't cost extra round-trips.
-          const NOT_BILLABLE    = /Region code (\w+) is not billable/;
-          const PRICE_RANGE     = /Price for (\w+) must be between/;
-          const CURRENCY_ERR    = /Invalid currency for region code (\w+).*Expected (\w+) but got/;
-          const CONFIGS_REMOVED = /Regional configs were removed from the base plan: (.+)/;
+          const NOT_BILLABLE = /Region code (\w+) is not billable/;
+          const PRICE_RANGE = /Price for (\w+) must be between/;
+          const CURRENCY_ERR =
+            /Invalid currency for region code (\w+).*Expected (\w+) but got/;
+          const CONFIGS_REMOVED =
+            /Regional configs were removed from the base plan: (.+)/;
 
           // Regions excluded from payload — only truly "not billable" ones.
           // Google allows removing these; it rejects removing priced regions.
@@ -553,21 +624,29 @@ export default function PlayPage() {
           const runtimeCorrections: Record<string, string> = {};
           const allWarnings: string[] = [];
 
-          const correctCurrency = (regionCode: string, storedCurrency: string) =>
-            runtimeCorrections[regionCode] ?? requiredCurrency(regionCode, storedCurrency);
+          const correctCurrency = (
+            regionCode: string,
+            storedCurrency: string,
+          ) =>
+            runtimeCorrections[regionCode] ??
+            requiredCurrency(regionCode, storedCurrency);
 
           for (let attempt = 0; attempt < 20; attempt++) {
             const updated: GpSubscription = JSON.parse(JSON.stringify(sub));
             const plan = updated.basePlans?.find(
-              (b) => b.basePlanId === selectedRef.basePlanId
+              (b) => b.basePlanId === selectedRef.basePlanId,
             );
-            if (!plan) throw new Error("Base plan not found — refresh and retry.");
+            if (!plan)
+              throw new Error("Base plan not found — refresh and retry.");
 
             plan.regionalConfigs = (plan.regionalConfigs ?? [])
               .filter((rc) => !notBillable.has(rc.regionCode))
               .map((rc) => {
                 if (!rc.price) return rc;
-                const correct = correctCurrency(rc.regionCode, rc.price.currencyCode);
+                const correct = correctCurrency(
+                  rc.regionCode,
+                  rc.price.currencyCode,
+                );
                 const fallback = priceResets.get(rc.regionCode);
                 if (fallback !== undefined)
                   return { ...rc, price: decimalToMoney(fallback, correct) };
@@ -590,7 +669,7 @@ export default function PlayPage() {
                     "regionsVersion.version": "2022/02",
                   },
                   body: updated,
-                }
+                },
               );
               break; // success
             } catch (e) {
@@ -601,7 +680,9 @@ export default function PlayPage() {
               const currMatch = e.message.match(CURRENCY_ERR);
               if (currMatch) {
                 runtimeCorrections[currMatch[1]] = currMatch[2];
-                allWarnings.push(`Auto-corrected currency: ${currMatch[1]} → ${currMatch[2]}`);
+                allWarnings.push(
+                  `Auto-corrected currency: ${currMatch[1]} → ${currMatch[2]}`,
+                );
                 continue;
               }
 
@@ -609,7 +690,9 @@ export default function PlayPage() {
               const nbMatch = e.message.match(NOT_BILLABLE);
               if (nbMatch) {
                 notBillable.add(nbMatch[1]);
-                allWarnings.push(`⚠ ${nbMatch[1]}: not billable in regions version 2022/02 — excluded`);
+                allWarnings.push(
+                  `⚠ ${nbMatch[1]}: not billable in regions version 2022/02 — excluded`,
+                );
                 continue;
               }
 
@@ -618,7 +701,7 @@ export default function PlayPage() {
               if (prMatch) {
                 priceResets.set(prMatch[1], 0.99);
                 allWarnings.push(
-                  `⚠ ${prMatch[1]}: price out of allowed range — reset to $0.99. Set the correct price in Play Console.`
+                  `⚠ ${prMatch[1]}: price out of allowed range — reset to $0.99. Set the correct price in Play Console.`,
                 );
                 continue;
               }
@@ -626,10 +709,15 @@ export default function PlayPage() {
               // We excluded a priced region — undo the exclusion, use $0.99 instead.
               const removedMatch = e.message.match(CONFIGS_REMOVED);
               if (removedMatch) {
-                for (const r of removedMatch[1].split(/,\s*/).map((s) => s.trim()).filter(Boolean)) {
+                for (const r of removedMatch[1]
+                  .split(/,\s*/)
+                  .map((s) => s.trim())
+                  .filter(Boolean)) {
                   notBillable.delete(r);
                   priceResets.set(r, 0.99);
-                  allWarnings.push(`⚠ ${r}: cannot be removed — reset to $0.99. Fix in Play Console.`);
+                  allWarnings.push(
+                    `⚠ ${r}: cannot be removed — reset to $0.99. Fix in Play Console.`,
+                  );
                 }
                 continue;
               }
@@ -643,14 +731,18 @@ export default function PlayPage() {
           }
         }
 
-        setApplied(true);
+        setApplySummary({
+          productLabel: refLabel(selectedRef),
+          regionsChanged: changes.size,
+          warnings: importWarnings,
+        });
         setImportPreview(null);
         setSheetText("");
         await loadProducts();
         setSelectedRefKey(refKey(selectedRef));
       } catch (e) {
         setError(
-          e instanceof GpError || e instanceof Error ? e.message : String(e)
+          e instanceof GpError || e instanceof Error ? e.message : String(e),
         );
       } finally {
         setApplying(false);
@@ -660,27 +752,37 @@ export default function PlayPage() {
       gpCredentials,
       selectedRef,
       selectedPackage,
-      snapshotScope,
-      currentPrices,
       currentByRegion,
       iaps,
       subs,
       loadProducts,
-    ]
+      importWarnings,
+    ],
   );
 
-  async function applyImport() {
+  async function applyImport(withSnapshot = true, snapshotName?: string) {
     if (!importPreview) return;
-    if (!isPro) {
-      setPaywallOpen(true);
-      return;
-    }
+    setSnapshotDialog(false);
     const changes = new Map(
       importPreview
         .filter((r) => r.newPrice !== r.currentPrice)
-        .map((r) => [r.regionCode, Number(r.newPrice)] as const)
+        .map((r) => [r.regionCode, Number(r.newPrice)] as const),
     );
-    await applyChanges(changes, `Before sheet import · ${changes.size} regions`);
+    if (withSnapshot) {
+      takeSnapshot({
+        appId: selectedPackage,
+        scope: snapshotScope,
+        label: snapshotName || `Before import · ${changes.size} regions`,
+        rows: currentPrices.map((r) => ({
+          territoryId: r.regionCode,
+          pricePointId: "",
+          customerPrice: r.price,
+          currency: r.currency,
+        })),
+      });
+      setSnapRefresh((n) => n + 1);
+    }
+    await applyChanges(changes);
   }
 
   async function restoreSnapshot(snapshot: PriceSnapshot) {
@@ -689,9 +791,11 @@ export default function PlayPage() {
       return;
     }
     const changes = new Map(
-      snapshot.rows.map((r) => [r.territoryId, Number(r.customerPrice)] as const)
+      snapshot.rows.map(
+        (r) => [r.territoryId, Number(r.customerPrice)] as const,
+      ),
     );
-    await applyChanges(changes, "Before restore (auto-safety)");
+    await applyChanges(changes);
   }
 
   function saveNamedSnapshot(label: string) {
@@ -714,7 +818,7 @@ export default function PlayPage() {
     const q = search.trim().toUpperCase();
     if (!q) return currentPrices;
     return currentPrices.filter(
-      (r) => r.regionCode.includes(q) || r.currency.includes(q)
+      (r) => r.regionCode.includes(q) || r.currency.includes(q),
     );
   }, [currentPrices, search]);
 
@@ -725,352 +829,466 @@ export default function PlayPage() {
 
   return (
     <RequireAccount>
-    <main className="max-w-5xl mx-auto w-full px-6 py-10">
-      {/* Play-specific header — Apple credentials/TopBar don't apply here */}
-      <header className="flex items-center justify-between mb-10">
-        <div className="flex items-center gap-3">
-          <Link href="/" className="text-sm text-zinc-400 hover:text-zinc-200 transition">
-            ← Home
-          </Link>
-          <h1 className="text-2xl font-bold tracking-tight">
-            Store<span className="text-emerald-400">Ops</span>{" "}
-            <span className="text-sm font-normal text-zinc-500">· Google Play</span>
-          </h1>
-        </div>
-        <div className="flex items-center gap-3">
-          <Link href="/apps" className="text-sm text-zinc-400 hover:text-emerald-400 transition">
-             App Store →
-          </Link>
-          <Link href="/account" className="text-sm text-zinc-400 hover:text-zinc-200 transition">
-            Account
-          </Link>
-          {gpCredentials && (
-            <button
-              onClick={() => clearGpCredentials()}
-              className="text-sm text-zinc-500 hover:text-zinc-200 transition"
+      <main className="max-w-5xl mx-auto w-full px-6 py-10">
+        {/* Play-specific header — Apple credentials/TopBar don't apply here */}
+        <header className="flex items-center justify-between mb-10">
+          <div className="flex items-center gap-3">
+            <Link
+              href="/"
+              className="text-sm text-zinc-400 hover:text-zinc-200 transition"
             >
-              Disconnect
-            </button>
-          )}
-        </div>
-      </header>
-
-      {error && (
-        <p className="text-sm text-red-400 bg-red-950/40 border border-red-900 rounded-md px-3 py-2 mb-4">
-          {error}
-        </p>
-      )}
-
-      {applied && (
-        <p className="text-sm text-emerald-400 bg-emerald-950/40 border border-emerald-900 rounded-md px-3 py-2 mb-4">
-          ✓ Play prices updated. Changes appear in Play Console immediately.
-        </p>
-      )}
-
-      {!gpCredentials ? (
-        /* ---- Connect ---- */
-        <div className="card card-hero p-6 max-w-xl">
-          <h2 className="font-semibold text-lg mb-1">Connect Google Play</h2>
-          <p className="text-sm text-zinc-400 mb-4 leading-relaxed">
-            Upload your service-account JSON. Same privacy model as the Apple
-            side: the key becomes a <strong className="text-zinc-200">non-extractable browser key</strong> —
-            it signs short-lived tokens locally and can never be read back. It
-            never touches our servers.
-          </p>
-          <label className="block">
-            <input
-              type="file"
-              accept=".json"
-              className="hidden"
-              id="gp-json-file"
-              disabled={connecting}
-              onChange={async (e) => {
-                const f = e.target.files?.[0];
-                if (f) await connect(await f.text());
-                e.target.value = "";
-              }}
-            />
-            <span
-              className="inline-block cursor-pointer rounded-md bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 transition"
-              onClick={() => document.getElementById("gp-json-file")?.click()}
-            >
-              {connecting ? "Importing key…" : "Choose service-account JSON"}
-            </span>
-          </label>
-          <div className="mt-5 text-xs text-zinc-500 leading-relaxed space-y-1">
-            <p className="font-semibold text-zinc-400">Setup (one time, ~3 minutes):</p>
-            <p>1. Google Cloud Console → create/select a project → enable the <strong>Google Play Android Developer API</strong></p>
-            <p>2. IAM → Service Accounts → create one → Keys → Add key → JSON</p>
-            <p>3. Play Console → Users and permissions → invite the service-account email with <strong>“Manage store presence” + “Manage orders”</strong> (or Admin)</p>
-          </div>
-        </div>
-      ) : (
-        <>
-          {/* ---- Packages ---- */}
-          <div className="card p-5 mb-6">
-            <div className="flex items-baseline justify-between mb-1">
-              <h2 className="font-semibold">Your apps</h2>
-              <span className="text-xs text-zinc-500 font-mono truncate max-w-[50%]">
-                {gpCredentials.clientEmail}
+              ← Home
+            </Link>
+            <h1 className="text-2xl font-bold tracking-tight">
+              Store<span className="text-emerald-400">Ops</span>{" "}
+              <span className="text-sm font-normal text-zinc-500">
+                · Google Play
               </span>
-            </div>
-            <p className="text-xs text-zinc-500 mb-3">
-              Google&apos;s API has no “list apps” endpoint — add each app&apos;s package
-              name once (e.g. com.yourcompany.app).
+            </h1>
+          </div>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/apps"
+              className="text-sm text-zinc-400 hover:text-emerald-400 transition"
+            >
+              App Store →
+            </Link>
+            <Link
+              href="/account"
+              className="text-sm text-zinc-400 hover:text-zinc-200 transition"
+            >
+              Account
+            </Link>
+            {gpCredentials && (
+              <button
+                onClick={() => clearGpCredentials()}
+                className="text-sm text-zinc-500 hover:text-zinc-200 transition"
+              >
+                Disconnect
+              </button>
+            )}
+          </div>
+        </header>
+
+        {error && (
+          <p className="text-sm text-red-400 bg-red-950/40 border border-red-900 rounded-md px-3 py-2 mb-4">
+            {error}
+          </p>
+        )}
+
+        {applySummary && (
+          <ApplySuccessDialog
+            productLabel={applySummary.productLabel}
+            regionsChanged={applySummary.regionsChanged}
+            warnings={applySummary.warnings}
+            onClose={() => setApplySummary(null)}
+          />
+        )}
+
+        {!gpCredentials ? (
+          /* ---- Connect ---- */
+          <div className="card card-hero p-6 max-w-xl">
+            <h2 className="font-semibold text-lg mb-1">Connect Google Play</h2>
+            <p className="text-sm text-zinc-400 mb-4 leading-relaxed">
+              Upload your service-account JSON. Same privacy model as the Apple
+              side: the key becomes a{" "}
+              <strong className="text-zinc-200">
+                non-extractable browser key
+              </strong>{" "}
+              — it signs short-lived tokens locally and can never be read back.
+              It never touches our servers.
             </p>
-            <div className="flex gap-2 mb-3 max-w-md">
+            <label className="block">
               <input
-                value={newPackage}
-                onChange={(e) => setNewPackage(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && newPackage.trim()) {
+                type="file"
+                accept=".json"
+                className="hidden"
+                id="gp-json-file"
+                disabled={connecting}
+                onChange={async (e) => {
+                  const f = e.target.files?.[0];
+                  if (f) await connect(await f.text());
+                  e.target.value = "";
+                }}
+              />
+              <span
+                className="inline-block cursor-pointer rounded-md bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 transition"
+                onClick={() => document.getElementById("gp-json-file")?.click()}
+              >
+                {connecting ? "Importing key…" : "Choose service-account JSON"}
+              </span>
+            </label>
+            <div className="mt-5 text-xs text-zinc-500 leading-relaxed space-y-1">
+              <p className="font-semibold text-zinc-400">
+                Setup (one time, ~3 minutes):
+              </p>
+              <p>
+                1. Google Cloud Console → create/select a project → enable the{" "}
+                <strong>Google Play Android Developer API</strong>
+              </p>
+              <p>
+                2. IAM → Service Accounts → create one → Keys → Add key → JSON
+              </p>
+              <p>
+                3. Play Console → Users and permissions → invite the
+                service-account email with{" "}
+                <strong>“Manage store presence” + “Manage orders”</strong> (or
+                Admin)
+              </p>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* ---- Packages ---- */}
+            <div className="card p-5 mb-6">
+              <div className="flex items-baseline justify-between mb-1">
+                <h2 className="font-semibold">Your apps</h2>
+                <span className="text-xs text-zinc-500 font-mono truncate max-w-[50%]">
+                  {gpCredentials.clientEmail}
+                </span>
+              </div>
+              <p className="text-xs text-zinc-500 mb-3">
+                Google&apos;s API has no “list apps” endpoint — add each
+                app&apos;s package name once (e.g. com.yourcompany.app).
+              </p>
+              <div className="flex gap-2 mb-3 max-w-md">
+                <input
+                  value={newPackage}
+                  onChange={(e) => setNewPackage(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && newPackage.trim()) {
+                      addPackage(newPackage.trim());
+                      setSelectedPackage(newPackage.trim());
+                      setNewPackage("");
+                    }
+                  }}
+                  placeholder="com.example.app"
+                  className="flex-1 rounded-md bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm font-mono focus:border-emerald-500 focus:outline-none"
+                />
+                <button
+                  onClick={() => {
+                    if (!newPackage.trim()) return;
                     addPackage(newPackage.trim());
                     setSelectedPackage(newPackage.trim());
                     setNewPackage("");
-                  }
-                }}
-                placeholder="com.example.app"
-                className="flex-1 rounded-md bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm font-mono focus:border-emerald-500 focus:outline-none"
-              />
-              <button
-                onClick={() => {
-                  if (!newPackage.trim()) return;
-                  addPackage(newPackage.trim());
-                  setSelectedPackage(newPackage.trim());
-                  setNewPackage("");
-                }}
-                disabled={!newPackage.trim()}
-                className="text-sm rounded-md border border-zinc-700 px-4 text-zinc-300 hover:border-emerald-600 hover:text-emerald-400 disabled:opacity-40 transition"
-              >
-                Add
-              </button>
-            </div>
-            {packages.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {packages.map((pkg) => (
-                  <span
-                    key={pkg}
-                    className={`inline-flex items-center gap-2 text-xs rounded-md border px-3 py-1.5 font-mono cursor-pointer transition ${
-                      selectedPackage === pkg
-                        ? "border-emerald-700 bg-emerald-950/40 text-emerald-300"
-                        : "border-zinc-700 text-zinc-400 hover:border-zinc-500"
-                    }`}
-                    onClick={() => setSelectedPackage(pkg)}
-                  >
-                    {pkg}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        removePackage(pkg);
-                        if (selectedPackage === pkg) setSelectedPackage("");
-                      }}
-                      className="text-zinc-600 hover:text-red-400"
-                      aria-label={`Remove ${pkg}`}
-                    >
-                      ✕
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* ---- Product selector ---- */}
-          {selectedPackage && (
-            <div className="card p-5 mb-6">
-              <h2 className="font-semibold mb-3">Select product</h2>
-              {loadingProducts ? (
-                <p className="text-sm text-zinc-400 animate-pulse">
-                  Loading products from Google Play…
-                </p>
-              ) : productRefs.length === 0 ? (
-                <p className="text-sm text-zinc-400">
-                  No products found. Check the service account has access to{" "}
-                  <span className="font-mono">{selectedPackage}</span>.
-                </p>
-              ) : (
-                <select
-                  value={selectedRefKey}
-                  onChange={(e) => {
-                    setSelectedRefKey(e.target.value);
-                    setImportPreview(null);
-                    setSheetText("");
-                    setApplied(false);
                   }}
-                  className="w-full max-w-md rounded-md bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
+                  disabled={!newPackage.trim()}
+                  className="text-sm rounded-md border border-zinc-700 px-4 text-zinc-300 hover:border-emerald-600 hover:text-emerald-400 disabled:opacity-40 transition"
                 >
-                  <option value="">Choose a product…</option>
-                  {productRefs.map((r) => (
-                    <option key={refKey(r)} value={refKey(r)}>
-                      {refLabel(r)}
-                    </option>
+                  Add
+                </button>
+              </div>
+              {packages.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {packages.map((pkg) => (
+                    <span
+                      key={pkg}
+                      className={`inline-flex items-center gap-2 text-xs rounded-md border px-3 py-1.5 font-mono cursor-pointer transition ${
+                        selectedPackage === pkg
+                          ? "border-emerald-700 bg-emerald-950/40 text-emerald-300"
+                          : "border-zinc-700 text-zinc-400 hover:border-zinc-500"
+                      }`}
+                      onClick={() => setSelectedPackage(pkg)}
+                    >
+                      {pkg}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removePackage(pkg);
+                          if (selectedPackage === pkg) setSelectedPackage("");
+                        }}
+                        className="text-zinc-600 hover:text-red-400"
+                        aria-label={`Remove ${pkg}`}
+                      >
+                        ✕
+                      </button>
+                    </span>
                   ))}
-                </select>
+                </div>
               )}
             </div>
-          )}
 
-          {selectedRef && (
-            <>
-              {/* ---- Import sheet ---- */}
-              <div className="card card-hero p-5 mb-6">
-                <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
-                  <h2 className="font-semibold">
-                    Import price sheet{" "}
-                    <span className="text-zinc-500 font-normal text-sm">
-                      CSV from any AI or spreadsheet
-                    </span>
-                  </h2>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={exportCsv}
-                      disabled={currentPrices.length === 0}
-                      className="text-xs rounded-md border border-zinc-700 px-3 py-1.5 text-zinc-300 hover:border-zinc-500 disabled:opacity-40 transition"
-                    >
-                      ↓ Export CSV
-                    </button>
-                    <button
-                      onClick={copyAiPrompt}
-                      disabled={currentPrices.length === 0}
-                      className="text-xs rounded-md border border-zinc-700 px-3 py-1.5 text-zinc-400 hover:border-zinc-500 disabled:opacity-40 transition"
-                    >
-                      {copiedPrompt ? "Copied ✓" : "⧉ Copy prompt"}
-                    </button>
-                  </div>
-                </div>
-
-                {/* AI objective picker */}
-                <div className="flex items-center gap-2 flex-wrap mb-3">
-                  <span className="text-xs text-zinc-500 shrink-0">Objective:</span>
-                  {STRATEGIES.map((s) => (
-                    <button
-                      key={s.key}
-                      onClick={() => setStrategy(s.key)}
-                      title={s.tagline}
-                      className={`text-xs rounded-md px-2.5 py-1 border transition ${
-                        strategy === s.key
-                          ? "bg-emerald-900/60 border-emerald-700 text-emerald-300"
-                          : "border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
-                      }`}
-                    >
-                      {s.emoji} {s.label}
-                      {s.star && <span className="ml-1 text-amber-400 text-[10px]">★</span>}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Custom instructions */}
-                <textarea
-                  value={customInstructions}
-                  onChange={(e) => setCustomInstructions(e.target.value)}
-                  placeholder="Optional: add your own rules — e.g. keep Egypt under EGP 150, make India very aggressive, don't touch US price..."
-                  rows={2}
-                  className="w-full rounded-md bg-zinc-950 border border-zinc-800 px-3 py-2 text-sm text-zinc-300 placeholder:text-zinc-600 focus:border-emerald-500 focus:outline-none resize-none mb-3"
-                />
-
-                {/* AI Reprice button */}
-                {aiError && <p className="text-xs text-red-400 mb-2">{aiError}</p>}
-                <button
-                  onClick={aiReprice}
-                  disabled={currentPrices.length === 0 || aiRepricing}
-                  className="w-full rounded-md bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed px-4 py-2 text-sm font-medium text-white transition mb-4"
-                >
-                  {aiRepricing ? "Repricing…" : `✦ AI Reprice · ${getStrategy(strategy).emoji} ${getStrategy(strategy).label}`}
-                </button>
-
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="flex-1 h-px bg-zinc-800" />
-                  <span className="text-xs text-zinc-600">or paste your own CSV</span>
-                  <div className="flex-1 h-px bg-zinc-800" />
-                </div>
-
-                <textarea
-                  value={sheetText}
-                  onChange={(e) => {
-                    setSheetText(e.target.value);
-                    setImportPreview(null);
-                  }}
-                  placeholder={"region,price\nUS,4.99\nEG,49.99\nDE,3.99"}
-                  rows={4}
-                  className="w-full rounded-md bg-zinc-950 border border-zinc-800 px-3 py-2 text-sm font-mono focus:border-emerald-500 focus:outline-none resize-y"
-                />
-
-                <div className="flex flex-wrap items-center gap-3 mt-3">
-                  <label className="text-xs text-zinc-400 flex items-center gap-1.5">
-                    <input
-                      type="file"
-                      accept=".csv,.tsv,.txt"
-                      className="hidden"
-                      id="play-csv-file"
-                      onChange={async (e) => {
-                        const f = e.target.files?.[0];
-                        if (f) {
-                          setSheetText(await f.text());
-                          setImportPreview(null);
-                        }
-                      }}
-                    />
-                    <button
-                      onClick={() => document.getElementById("play-csv-file")?.click()}
-                      className="rounded-md border border-zinc-700 px-3 py-1.5 text-zinc-300 hover:border-zinc-500 transition"
-                    >
-                      Upload .csv
-                    </button>
-                  </label>
-
-                  <button
-                    onClick={previewImport}
-                    disabled={!sheetText.trim() || applying}
-                    className="text-sm rounded-md border border-zinc-700 px-4 py-2 text-zinc-200 hover:border-emerald-600 disabled:opacity-40 transition"
+            {/* ---- Product selector ---- */}
+            {selectedPackage && (
+              <div className="card p-5 mb-6">
+                <h2 className="font-semibold mb-3">Select product</h2>
+                {loadingProducts ? (
+                  <p className="text-sm text-zinc-400 animate-pulse">
+                    Loading products from Google Play…
+                  </p>
+                ) : productRefs.length === 0 ? (
+                  <p className="text-sm text-zinc-400">
+                    No products found. Check the service account has access to{" "}
+                    <span className="font-mono">{selectedPackage}</span>.
+                  </p>
+                ) : (
+                  <select
+                    value={selectedRefKey}
+                    onChange={(e) => {
+                      setSelectedRefKey(e.target.value);
+                      setImportPreview(null);
+                      setSheetText("");
+                      setApplySummary(null);
+                    }}
+                    className="w-full max-w-md rounded-md bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
                   >
-                    Preview changes
+                    <option value="">Choose a product…</option>
+                    {productRefs.map((r) => (
+                      <option key={refKey(r)} value={refKey(r)}>
+                        {refLabel(r)}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
+
+            {selectedRef && (
+              <>
+                {/* ---- Import sheet ---- */}
+                <div className="card card-hero p-5 mb-6">
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+                    <h2 className="font-semibold">
+                      Import price sheet{" "}
+                      <span className="text-zinc-500 font-normal text-sm">
+                        CSV from any AI or spreadsheet
+                      </span>
+                    </h2>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={exportCsv}
+                        disabled={currentPrices.length === 0}
+                        className="text-xs rounded-md border border-zinc-700 px-3 py-1.5 text-zinc-300 hover:border-zinc-500 disabled:opacity-40 transition"
+                      >
+                        ↓ Export CSV
+                      </button>
+                      <button
+                        onClick={copyAiPrompt}
+                        disabled={currentPrices.length === 0}
+                        className="text-xs rounded-md border border-zinc-700 px-3 py-1.5 text-zinc-400 hover:border-zinc-500 disabled:opacity-40 transition"
+                      >
+                        {copiedPrompt ? "Copied ✓" : "⧉ Copy prompt"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* AI objective picker */}
+                  <div className="flex items-center gap-2 flex-wrap mb-3">
+                    <span className="text-xs text-zinc-500 shrink-0">
+                      Objective:
+                    </span>
+                    {STRATEGIES.map((s) => (
+                      <button
+                        key={s.key}
+                        onClick={() => setStrategy(s.key)}
+                        title={s.tagline}
+                        className={`text-xs rounded-md px-2.5 py-1 border transition ${
+                          strategy === s.key
+                            ? "bg-emerald-900/60 border-emerald-700 text-emerald-300"
+                            : "border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
+                        }`}
+                      >
+                        {s.emoji} {s.label}
+                        {s.star && (
+                          <span className="ml-1 text-amber-400 text-[10px]">
+                            ★
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Custom instructions */}
+                  <textarea
+                    value={customInstructions}
+                    onChange={(e) => setCustomInstructions(e.target.value)}
+                    placeholder="Optional: add your own rules — e.g. keep Egypt under EGP 150, make India very aggressive, don't touch US price..."
+                    rows={2}
+                    className="w-full rounded-md bg-zinc-950 border border-zinc-800 px-3 py-2 text-sm text-zinc-300 placeholder:text-zinc-600 focus:border-emerald-500 focus:outline-none resize-none mb-3"
+                  />
+
+                  {/* AI Reprice button */}
+                  {aiError && (
+                    <p className="text-xs text-red-400 mb-2">{aiError}</p>
+                  )}
+                  <button
+                    onClick={aiReprice}
+                    disabled={currentPrices.length === 0 || aiRepricing}
+                    className="w-full rounded-md bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed px-4 py-2 text-sm font-medium text-white transition mb-4"
+                  >
+                    {aiRepricing
+                      ? "Repricing…"
+                      : `✦ AI Reprice · ${getStrategy(strategy).emoji} ${getStrategy(strategy).label}`}
                   </button>
-                  {importPreview && (
+
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="flex-1 h-px bg-zinc-800" />
+                    <span className="text-xs text-zinc-600">
+                      or paste your own CSV
+                    </span>
+                    <div className="flex-1 h-px bg-zinc-800" />
+                  </div>
+
+                  <textarea
+                    value={sheetText}
+                    onChange={(e) => {
+                      setSheetText(e.target.value);
+                      setImportPreview(null);
+                    }}
+                    placeholder={"region,price\nUS,4.99\nEG,49.99\nDE,3.99"}
+                    rows={4}
+                    className="w-full rounded-md bg-zinc-950 border border-zinc-800 px-3 py-2 text-sm font-mono focus:border-emerald-500 focus:outline-none resize-y"
+                  />
+
+                  <div className="flex flex-wrap items-center gap-3 mt-3">
+                    <label className="text-xs text-zinc-400 flex items-center gap-1.5">
+                      <input
+                        type="file"
+                        accept=".csv,.tsv,.txt"
+                        className="hidden"
+                        id="play-csv-file"
+                        onChange={async (e) => {
+                          const f = e.target.files?.[0];
+                          if (f) {
+                            setSheetText(await f.text());
+                            setImportPreview(null);
+                          }
+                        }}
+                      />
+                      <button
+                        onClick={() =>
+                          document.getElementById("play-csv-file")?.click()
+                        }
+                        className="rounded-md border border-zinc-700 px-3 py-1.5 text-zinc-300 hover:border-zinc-500 transition"
+                      >
+                        Upload .csv
+                      </button>
+                    </label>
+
                     <button
-                      onClick={applyImport}
-                      disabled={applying || changedCount === 0}
-                      className="text-sm rounded-md bg-emerald-500 px-4 py-2 font-semibold text-zinc-950 hover:bg-emerald-400 disabled:opacity-40 transition"
+                      onClick={previewImport}
+                      disabled={!sheetText.trim() || applying}
+                      className="text-sm rounded-md border border-zinc-700 px-4 py-2 text-zinc-200 hover:border-emerald-600 disabled:opacity-40 transition"
                     >
-                      {applying
-                        ? "Applying…"
-                        : `Apply ${changedCount} change${changedCount === 1 ? "" : "s"} to Google Play`}
+                      Preview changes
                     </button>
+                    {importPreview && (
+                      <button
+                        onClick={() =>
+                          isPro ? setSnapshotDialog(true) : setPaywallOpen(true)
+                        }
+                        disabled={applying || changedCount === 0}
+                        className="text-sm rounded-md bg-emerald-500 px-4 py-2 font-semibold text-zinc-950 hover:bg-emerald-400 disabled:opacity-40 transition"
+                      >
+                        {applying
+                          ? "Applying…"
+                          : `${isPro ? "" : "🔒 "}Apply ${changedCount} change${changedCount === 1 ? "" : "s"} to Google Play`}
+                      </button>
+                    )}
+                  </div>
+
+                  {importWarnings.length > 0 && (
+                    <div className="mt-3 text-xs text-amber-400/90 space-y-0.5 max-h-24 overflow-y-auto">
+                      {importWarnings.map((w, i) => (
+                        <p key={i}>⚠ {w}</p>
+                      ))}
+                    </div>
+                  )}
+
+                  {importPreview && (
+                    <div className="mt-4 max-h-64 overflow-y-auto rounded-md border border-zinc-800">
+                      <table className="w-full text-sm">
+                        <thead className="sticky top-0 bg-zinc-900">
+                          <tr className="text-left text-xs text-zinc-500">
+                            <th className="px-3 py-2">Region</th>
+                            <th className="px-3 py-2">Current</th>
+                            <th className="px-3 py-2">New</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {importPreview.map((r) => (
+                            <tr
+                              key={r.regionCode}
+                              className="border-t border-zinc-800/60"
+                            >
+                              <td className="px-3 py-1.5 font-mono text-xs">
+                                {r.regionCode}
+                              </td>
+                              <td className="px-3 py-1.5 text-zinc-400">
+                                {formatPrice(r.currentPrice, r.currency)}
+                              </td>
+                              <td
+                                className={`px-3 py-1.5 ${
+                                  r.newPrice !== r.currentPrice
+                                    ? "text-emerald-400"
+                                    : "text-zinc-500"
+                                }`}
+                              >
+                                {formatPrice(r.newPrice, r.currency)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   )}
                 </div>
 
-                {importWarnings.length > 0 && (
-                  <div className="mt-3 text-xs text-amber-400/90 space-y-0.5 max-h-24 overflow-y-auto">
-                    {importWarnings.map((w, i) => (
-                      <p key={i}>⚠ {w}</p>
-                    ))}
-                  </div>
-                )}
+                {/* ---- Snapshots ---- */}
+                <SnapshotPanel
+                  appId={selectedPackage}
+                  scope={snapshotScope}
+                  refreshKey={snapRefresh}
+                  onRestore={restoreSnapshot}
+                  onSave={saveNamedSnapshot}
+                  busy={applying}
+                />
 
-                {importPreview && (
-                  <div className="mt-4 max-h-64 overflow-y-auto rounded-md border border-zinc-800">
+                {/* ---- Current prices ---- */}
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="font-semibold">
+                    Current prices{" "}
+                    <span className="text-zinc-500 font-normal text-sm">
+                      {currentPrices.length} regions
+                    </span>
+                  </h2>
+                  <input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Filter: US, EG, EUR…"
+                    className="rounded-md bg-zinc-950 border border-zinc-700 px-3 py-1.5 text-sm w-48 focus:border-emerald-500 focus:outline-none"
+                  />
+                </div>
+
+                {currentPrices.length === 0 ? (
+                  <p className="text-sm text-zinc-400">
+                    No regional prices set for this product yet — set an initial
+                    price in Play Console first.
+                  </p>
+                ) : (
+                  <div className="rounded-md border border-zinc-800 overflow-hidden">
                     <table className="w-full text-sm">
-                      <thead className="sticky top-0 bg-zinc-900">
+                      <thead className="bg-zinc-900">
                         <tr className="text-left text-xs text-zinc-500">
                           <th className="px-3 py-2">Region</th>
-                          <th className="px-3 py-2">Current</th>
-                          <th className="px-3 py-2">New</th>
+                          <th className="px-3 py-2">Currency</th>
+                          <th className="px-3 py-2">Price</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {importPreview.map((r) => (
-                          <tr key={r.regionCode} className="border-t border-zinc-800/60">
-                            <td className="px-3 py-1.5 font-mono text-xs">{r.regionCode}</td>
-                            <td className="px-3 py-1.5 text-zinc-400">
-                              {formatPrice(r.currentPrice, r.currency)}
+                        {filteredPrices.map((r) => (
+                          <tr
+                            key={r.regionCode}
+                            className="border-t border-zinc-800/60"
+                          >
+                            <td className="px-3 py-1.5 font-mono text-xs">
+                              {r.regionCode}
                             </td>
-                            <td
-                              className={`px-3 py-1.5 ${
-                                r.newPrice !== r.currentPrice
-                                  ? "text-emerald-400"
-                                  : "text-zinc-500"
-                              }`}
-                            >
-                              {formatPrice(r.newPrice, r.currency)}
+                            <td className="px-3 py-1.5 text-zinc-400">
+                              {r.currency}
+                            </td>
+                            <td className="px-3 py-1.5">
+                              {formatPrice(r.price, r.currency)}
                             </td>
                           </tr>
                         ))}
@@ -1078,68 +1296,27 @@ export default function PlayPage() {
                     </table>
                   </div>
                 )}
-              </div>
+              </>
+            )}
+          </>
+        )}
 
-              {/* ---- Snapshots ---- */}
-              <SnapshotPanel
-                appId={selectedPackage}
-                scope={snapshotScope}
-                refreshKey={snapRefresh}
-                onRestore={restoreSnapshot}
-                onSave={saveNamedSnapshot}
-                busy={applying}
-              />
-
-              {/* ---- Current prices ---- */}
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="font-semibold">
-                  Current prices{" "}
-                  <span className="text-zinc-500 font-normal text-sm">
-                    {currentPrices.length} regions
-                  </span>
-                </h2>
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Filter: US, EG, EUR…"
-                  className="rounded-md bg-zinc-950 border border-zinc-700 px-3 py-1.5 text-sm w-48 focus:border-emerald-500 focus:outline-none"
-                />
-              </div>
-
-              {currentPrices.length === 0 ? (
-                <p className="text-sm text-zinc-400">
-                  No regional prices set for this product yet — set an initial
-                  price in Play Console first.
-                </p>
-              ) : (
-                <div className="rounded-md border border-zinc-800 overflow-hidden">
-                  <table className="w-full text-sm">
-                    <thead className="bg-zinc-900">
-                      <tr className="text-left text-xs text-zinc-500">
-                        <th className="px-3 py-2">Region</th>
-                        <th className="px-3 py-2">Currency</th>
-                        <th className="px-3 py-2">Price</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredPrices.map((r) => (
-                        <tr key={r.regionCode} className="border-t border-zinc-800/60">
-                          <td className="px-3 py-1.5 font-mono text-xs">{r.regionCode}</td>
-                          <td className="px-3 py-1.5 text-zinc-400">{r.currency}</td>
-                          <td className="px-3 py-1.5">{formatPrice(r.price, r.currency)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </>
-          )}
-        </>
-      )}
-
-      <PaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
-    </main>
+        <SnapshotConfirmDialog
+          open={snapshotDialog}
+          defaultName={
+            importPreview
+              ? `Before import · ${importPreview.filter((r) => r.newPrice !== r.currentPrice).length} regions`
+              : ""
+          }
+          onSaveAndApply={(name) => applyImport(true, name)}
+          onSkipAndApply={() => applyImport(false)}
+          onCancel={() => setSnapshotDialog(false)}
+        />
+        <PaywallModal
+          open={paywallOpen}
+          onClose={() => setPaywallOpen(false)}
+        />
+      </main>
     </RequireAccount>
   );
 }

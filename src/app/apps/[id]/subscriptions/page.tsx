@@ -14,6 +14,7 @@ import { buildCsv, parsePriceSheet, snapToPricePoint } from "@/lib/pricing-impor
 import { type PricingStrategy, getStrategy } from "@/lib/pricing-strategies";
 import { AiRepricePanel } from "@/components/AiRepricePanel";
 import { SnapshotConfirmDialog } from "@/components/SnapshotConfirmDialog";
+import { ApplySuccessDialog } from "@/components/ApplySuccessDialog";
 import type {
   Subscription,
   SubscriptionGroup,
@@ -101,6 +102,11 @@ export default function SubscriptionsPage() {
   const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
   const [applying, setApplying] = useState<{ done: number; total: number } | null>(null);
   const [applied, setApplied] = useState(false);
+  const [applySummary, setApplySummary] = useState<{
+    productLabel: string;
+    regionsChanged: number;
+    warnings: string[];
+  } | null>(null);
   const [snapshotDialog, setSnapshotDialog] = useState(false);
   const [copiedPrompt, setCopiedPrompt] = useState(false);
   const [strategy, setStrategy] = useState<PricingStrategy>("ppp");
@@ -182,6 +188,7 @@ export default function SubscriptionsPage() {
       setImportPreview(null);
       setSheetText("");
       setApplied(false);
+      setApplySummary(null);
       loadPrices(selectedSubId);
     }
   }, [selectedSubId, loadPrices]);
@@ -250,6 +257,7 @@ export default function SubscriptionsPage() {
     if (!credentials || !_text.trim() || !selectedSubId) return;
     setError("");
     setApplied(false);
+    setApplySummary(null);
     setImportPreview(null);
 
     const { rows, warnings } = parsePriceSheet(_text);
@@ -439,6 +447,12 @@ export default function SubscriptionsPage() {
       await postPrices(
         importPreview.map((r) => ({ territoryId: r.territoryId, pointId: r.pointId }))
       );
+      setApplySummary({
+        productLabel:
+          subscriptions.find((s) => s.id === selectedSubId)?.attributes.name ?? selectedSubId,
+        regionsChanged: importPreview.length,
+        warnings: importWarnings,
+      });
       setApplied(true);
       setImportPreview(null);
       setSheetText("");
@@ -459,6 +473,12 @@ export default function SubscriptionsPage() {
       await postPrices(
         snapshot.rows.map((r) => ({ territoryId: r.territoryId, pointId: r.pricePointId }))
       );
+      setApplySummary({
+        productLabel:
+          subscriptions.find((s) => s.id === selectedSubId)?.attributes.name ?? selectedSubId,
+        regionsChanged: snapshot.rows.length,
+        warnings: [],
+      });
       setApplied(true);
       await loadPrices(selectedSubId);
     } catch (e) {
@@ -545,10 +565,13 @@ export default function SubscriptionsPage() {
         </p>
       )}
 
-      {applied && (
-        <p className="text-sm text-emerald-400 bg-emerald-950/40 border border-emerald-900 rounded-md px-3 py-2 mb-4">
-          ✓ Subscription prices updated. Existing subscribers are grandfathered at their current price by Apple — only new subscribers see the new tier.
-        </p>
+      {applySummary && (
+        <ApplySuccessDialog
+          productLabel={applySummary.productLabel}
+          regionsChanged={applySummary.regionsChanged}
+          warnings={applySummary.warnings}
+          onClose={() => setApplySummary(null)}
+        />
       )}
 
       {/* Subscription selector */}
