@@ -6,6 +6,7 @@ import { PaywallModal } from "@/components/Paywall";
 import { RequireAccount } from "@/components/RequireAccount";
 import { SnapshotConfirmDialog } from "@/components/SnapshotConfirmDialog";
 import { ApplySuccessDialog } from "@/components/ApplySuccessDialog";
+import { UpdateStatus } from "@/components/UpdateStatus";
 import { SnapshotPanel } from "@/components/SnapshotPanel";
 import { useIsPro } from "@/lib/license";
 import { takeSnapshot, type PriceSnapshot } from "@/lib/snapshots";
@@ -874,6 +875,13 @@ export default function PlayPage() {
           <p className="text-sm text-red-400 bg-red-950/40 border border-red-900 rounded-md px-3 py-2 mb-4">
             {error}
           </p>
+        )}
+
+        {applying && (
+          <UpdateStatus
+            title="Updating Google Play pricing…"
+            detail="Your regional price configuration is being sent to Google Play. Keep this page open until it finishes."
+          />
         )}
 
         {applySummary && (

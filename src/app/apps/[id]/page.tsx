@@ -37,6 +37,10 @@ export default function MetadataEditorPage() {
   const [draft, setDraft] = useState<Draft>({});
   const [activeField, setActiveField] = useState<VersionFieldKey>("whatsNew");
   const [saving, setSaving] = useState(false);
+  const [saveProgress, setSaveProgress] = useState<{
+    done: number;
+    total: number;
+  } | null>(null);
   const [saveLog, setSaveLog] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [hydrated, setHydrated] = useState(false);
@@ -125,59 +129,74 @@ export default function MetadataEditorPage() {
 
   async function saveAll() {
     if (!credentials || !locs) return;
-    setSaving(true);
-    setSaveLog([]);
-    const log: string[] = [];
 
-    for (const loc of locs) {
+    const updates = locs.flatMap((loc) => {
       const fields = draft[loc.id];
-      if (!fields) continue;
+      if (!fields) return [];
+
       const changed: Record<string, string> = {};
       for (const [k, v] of Object.entries(fields)) {
-        if (v !== ((loc.attributes[k as VersionFieldKey] as string | null) ?? ""))
+        if (v !== ((loc.attributes[k as VersionFieldKey] as string | null) ?? "")) {
           changed[k] = v;
+        }
       }
-      if (Object.keys(changed).length === 0) continue;
+      return Object.keys(changed).length > 0 ? [{ loc, changed }] : [];
+    });
 
-      try {
-        await ascFetch(credentials, `/v1/appStoreVersionLocalizations/${loc.id}`, {
-          method: "PATCH",
-          body: {
-            data: {
-              type: "appStoreVersionLocalizations",
-              id: loc.id,
-              attributes: changed,
+    if (updates.length === 0) return;
+
+    setSaving(true);
+    setSaveLog([]);
+    setSaveProgress({ done: 0, total: updates.length });
+    const log: string[] = [];
+
+    try {
+      for (const [index, { loc, changed }] of updates.entries()) {
+        try {
+          await ascFetch(credentials, `/v1/appStoreVersionLocalizations/${loc.id}`, {
+            method: "PATCH",
+            body: {
+              data: {
+                type: "appStoreVersionLocalizations",
+                id: loc.id,
+                attributes: changed,
+              },
             },
-          },
-        });
-        log.push(`✓ ${loc.attributes.locale}`);
-      } catch (e) {
-        log.push(
-          `✗ ${loc.attributes.locale}: ${e instanceof Error ? e.message : e}`
-        );
+          });
+          log.push(`✓ ${loc.attributes.locale}`);
+        } catch (e) {
+          log.push(
+            `✗ ${loc.attributes.locale}: ${e instanceof Error ? e.message : e}`
+          );
+        }
+        setSaveLog([...log]);
+        setSaveProgress({ done: index + 1, total: updates.length });
       }
-      setSaveLog([...log]);
-    }
 
-    const savedCount = log.filter((l) => l.startsWith("✓")).length;
-    if (savedCount > 1) {
-      // ~1.5 min per locale of ASC navigation, load times, and clicking
-      log.push(
-        `🎉 ${savedCount} locales updated — that's ~${Math.round(savedCount * 1.5)} min of ASC clicking you just skipped.`
+      const savedCount = log.filter((l) => l.startsWith("✓")).length;
+      if (savedCount > 1) {
+        // ~1.5 min per locale of ASC navigation, load times, and clicking
+        log.push(
+          `🎉 ${savedCount} locales updated — that's ~${Math.round(savedCount * 1.5)} min of ASC clicking you just skipped.`
+        );
+        setSaveLog([...log]);
+      }
+
+      // Refresh from Apple so the table reflects reality
+      const fresh = await ascFetchAll<VersionLocalization>(
+        credentials,
+        `/v1/appStoreVersions/${selectedVersion!.id}/appStoreVersionLocalizations`
       );
-      setSaveLog([...log]);
+      setLocs(
+        fresh.sort((a, b) => a.attributes.locale.localeCompare(b.attributes.locale))
+      );
+      setDraft({});
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaveProgress(null);
+      setSaving(false);
     }
-
-    // Refresh from Apple so the table reflects reality
-    const fresh = await ascFetchAll<VersionLocalization>(
-      credentials,
-      `/v1/appStoreVersions/${selectedVersion!.id}/appStoreVersionLocalizations`
-    );
-    setLocs(
-      fresh.sort((a, b) => a.attributes.locale.localeCompare(b.attributes.locale))
-    );
-    setDraft({});
-    setSaving(false);
   }
 
   const fieldDef = VERSION_FIELDS.find((f) => f.key === activeField)!;
@@ -240,12 +259,34 @@ export default function MetadataEditorPage() {
               className="btn-glow rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 disabled:opacity-40 disabled:shadow-none disabled:cursor-not-allowed transition"
             >
               {saving
-                ? "Saving…"
+                ? `Updating ${saveProgress?.done ?? 0}/${saveProgress?.total ?? 0}…`
                 : dirtyCount > 0
                   ? `${isPro ? "" : "🔒 "}Save ${dirtyCount} change${dirtyCount > 1 ? "s" : ""}`
                   : "No changes"}
             </button>
           </div>
+
+          {saveProgress && (
+            <div
+              className="mb-4"
+              role="status"
+              aria-live="polite"
+              aria-label={`Updating locale ${saveProgress.done} of ${saveProgress.total}`}
+            >
+              <div className="mb-1 flex items-center justify-between text-xs text-zinc-400">
+                <span>Updating locales</span>
+                <span className="font-mono text-emerald-400">
+                  {saveProgress.done}/{saveProgress.total}
+                </span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-zinc-800">
+                <div
+                  className="h-full rounded-full bg-emerald-500 transition-[width] duration-200"
+                  style={{ width: `${(saveProgress.done / saveProgress.total) * 100}%` }}
+                />
+              </div>
+            </div>
+          )}
 
           {/* Field tabs */}
           <div className="flex gap-1 mb-4 border-b border-zinc-800">

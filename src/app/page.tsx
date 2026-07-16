@@ -122,18 +122,18 @@ const FEATURES = [
 const STEPS = [
   {
     n: "1",
-    title: "Connect your key",
-    body: "Your .p8 becomes a non-extractable browser key. It physically cannot be read back — not even by our code.",
+    title: "Connect your stores",
+    body: "Your credentials stay in your browser as non-extractable keys. They never become another thing to worry about.",
   },
   {
     n: "2",
     title: "Preview everything",
-    body: "Every change is a dry run first. See the exact diff — current vs. new — before anything touches Apple.",
+    body: "Every change is a dry run first. See the exact diff — current versus new — before anything touches a store.",
   },
   {
     n: "3",
     title: "Apply once",
-    body: "One click writes all locales and territories. Save a snapshot first so you can always roll back.",
+    body: "One calm push updates every locale and territory. Save a snapshot first so you can always roll back.",
   },
 ];
 
@@ -158,106 +158,72 @@ export default function LandingPage() {
         </div>
       </header>
 
-      {/* ---------- Hero + connect ---------- */}
-      <section className="max-w-5xl mx-auto px-6 pt-16 pb-12 grid gap-12 lg:grid-cols-[1.1fr_1fr] items-start">
-        <div className="animate-fade-up">
-          <p className="inline-flex items-center gap-2 rounded-full border border-emerald-900/70 bg-emerald-950/40 px-3 py-1 text-xs text-emerald-400 mb-6">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            Built by an indie dev, for indie devs
-          </p>
-
-          <h1 className="text-4xl sm:text-5xl font-bold tracking-tight leading-[1.1]">
-            Update all 175 storefronts
-            <br />
-            <span className="text-emerald-400">in one push.</span>
-          </h1>
-
-          <p className="mt-5 text-lg text-zinc-400 leading-relaxed">
-            Pricing, subscriptions, and metadata for App Store Connect — see
-            the exact diff before anything goes live, apply once, roll back
-            anytime. What takes{" "}
-            <span className="text-zinc-200 font-semibold">an afternoon of clicking</span>{" "}
-            takes <span className="text-emerald-400 font-semibold">2 minutes</span>.
-          </p>
-
-          <ul className="mt-8 space-y-3 text-[15px] text-zinc-300">
-            <li className="flex gap-3 items-baseline">
-              <span className="text-emerald-400 font-mono text-sm">▸</span>
-              <span>
-                &ldquo;What&apos;s New&rdquo; in 40 locales —{" "}
-                <span className="text-zinc-500 line-through">1 hour</span>{" "}
-                <span className="text-emerald-400 font-semibold">1 click</span>
-              </span>
-            </li>
-            <li className="flex gap-3 items-baseline">
-              <span className="text-emerald-400 font-mono text-sm">▸</span>
-              <span>
-                Reprice every storefront for local purchasing power —{" "}
-                <span className="text-zinc-500 line-through">an afternoon</span>{" "}
-                <span className="text-emerald-400 font-semibold">2 minutes</span>
-              </span>
-            </li>
-            <li className="flex gap-3 items-baseline">
-              <span className="text-emerald-400 font-mono text-sm">▸</span>
-              <span>
-                Change subscription prices{" "}
-                <span className="text-zinc-200 font-medium">
-                  without touching existing subscribers
-                </span>
-              </span>
-            </li>
-          </ul>
-
-          <div className="mt-8 flex flex-wrap gap-2">
-            {["175 storefronts", "40+ locales", "App Store + Google Play", "100% key-private"].map(
-              (chip) => (
-                <span
-                  key={chip}
-                  className="rounded-full border border-zinc-800 bg-zinc-900/60 px-3 py-1 text-xs text-zinc-400 font-mono"
-                >
-                  {chip}
-                </span>
-              )
-            )}
-          </div>
-        </div>
-
-        {/* Get-started card */}
-        <div className="card card-hero p-6 animate-fade-up lg:sticky lg:top-24">
-          <h2 className="font-semibold text-lg mb-1">Try it on your app — free</h2>
-          <p className="text-sm text-zinc-400 mb-5 leading-relaxed">
-            Connect either store and browse, preview, and export everything.
-            No credit card. Your keys become{" "}
-            <strong className="text-zinc-200">non-extractable browser keys</strong>{" "}
-            — they never touch our servers.
-          </p>
-
-          <div className="space-y-2.5">
-            <StoreCta href="/connect" label=" Connect App Store →" primary />
-            <StoreCta href="/play" label="🤖 Connect Google Play →" />
+      {/* ---------- Hero ---------- */}
+      <section className="relative overflow-hidden border-b border-zinc-900 bg-[radial-gradient(50rem_28rem_at_75%_20%,rgba(16,185,129,0.13),transparent_70%)]">
+        <div className="mx-auto grid min-h-[calc(100svh-3.5rem)] max-w-7xl items-center gap-10 px-6 py-12 lg:grid-cols-[0.8fr_1.2fr] lg:py-16">
+          <div className="animate-fade-up">
+            <p className="mb-6 font-mono text-xs uppercase tracking-[0.18em] text-emerald-400">
+              StoreOps · App Store + Google Play
+            </p>
+            <h1 className="max-w-xl text-4xl font-bold tracking-[-0.045em] leading-[1.02] sm:text-6xl">
+              You shipped the app.
+              <span className="block text-emerald-400">Release day is not for 175 storefronts.</span>
+            </h1>
+            <p className="mt-6 max-w-lg text-lg leading-relaxed text-zinc-400">
+              Update pricing, subscriptions, and &ldquo;What&apos;s New&rdquo; across your stores in one reviewable push — with diffs, progress, and rollback built in.
+            </p>
+            <div className="mt-8 flex flex-wrap items-center gap-3">
+              <div className="w-48">
+                <StoreCta href="/connect" label="Try it on my app →" primary />
+              </div>
+              <a
+                href="#demo"
+                className="rounded-md border border-zinc-700 px-4 py-2.5 text-sm font-semibold text-zinc-200 transition hover:border-emerald-600 hover:text-emerald-300"
+              >
+                Watch the demo ↓
+              </a>
+            </div>
+            <p className="mt-4 text-xs text-zinc-500">
+              Connect free. Preview every change. Pay only when you&apos;re ready to apply.
+            </p>
           </div>
 
-          <ul className="mt-5 space-y-1.5 text-xs text-zinc-400 border-t border-zinc-800 pt-4">
-            <li>✓ Browse every app, price, and locale</li>
-            <li>✓ Preview every change as a diff — dry run</li>
-            <li>✓ Export CSVs and AI pricing prompts</li>
-            <li className="text-zinc-500">Pro unlocks one-click applies</li>
-          </ul>
+          <figure id="demo" className="animate-fade-up [animation-delay:120ms]">
+            <div className="overflow-hidden rounded-2xl border border-emerald-900/60 bg-zinc-950 shadow-[0_24px_80px_rgba(0,0,0,0.45)]">
+              <video
+                controls
+                playsInline
+                preload="metadata"
+                className="aspect-[1.63] w-full bg-zinc-950 object-contain"
+              >
+                <source src="/storeops-demo-web.mp4" type="video/mp4" />
+                Your browser does not support embedded video.
+              </video>
+            </div>
+            <figcaption className="mt-3 flex items-center justify-between gap-3 text-xs text-zinc-500">
+              <span>A real walkthrough — no slides, no fake dashboard.</span>
+              <span className="shrink-0 font-mono text-emerald-400">Watch it in full</span>
+            </figcaption>
+          </figure>
         </div>
       </section>
 
-      {/* ---------- Stats strip ---------- */}
-      <section className="max-w-5xl mx-auto px-6 pb-2">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+      {/* ---------- Pain / payoff ---------- */}
+      <section className="mx-auto max-w-5xl px-6 py-16">
+        <p className="font-mono text-xs uppercase tracking-[0.18em] text-emerald-400">The release-day tax</p>
+        <h2 className="mt-3 max-w-2xl text-3xl font-bold tracking-tight sm:text-4xl">
+          The code is done. The console work is what steals your afternoon.
+        </h2>
+        <div className="mt-10 divide-y divide-zinc-800 border-y border-zinc-800">
           {[
-            { n: "175", l: "storefronts" },
-            { n: "40+", l: "locales" },
-            { n: "20 min", l: "per token" },
-            { n: "0", l: "servers store your key" },
-          ].map((s) => (
-            <div key={s.l} className="card p-4 animate-fade-up">
-              <p className="text-2xl font-bold text-emerald-400 font-mono tabular-nums">{s.n}</p>
-              <p className="text-xs text-zinc-400 mt-0.5">{s.l}</p>
+            ["Release notes", "Open 40 locales. Paste the same update. Repeat.", "Update every locale from one table."],
+            ["Regional pricing", "Click through country after country and hope every tier is valid.", "Import a sheet. Preview the diff. Apply once."],
+            ["Subscription changes", "Touch one wrong setting and worry about existing subscribers.", "Schedule safe changes with rollback ready."],
+          ].map(([task, oldWay, newWay]) => (
+            <div key={task} className="grid gap-2 py-5 sm:grid-cols-[0.7fr_1fr_1fr] sm:gap-6">
+              <h3 className="font-semibold text-zinc-100">{task}</h3>
+              <p className="text-sm leading-relaxed text-zinc-500">{oldWay}</p>
+              <p className="text-sm leading-relaxed text-emerald-300">{newWay}</p>
             </div>
           ))}
         </div>

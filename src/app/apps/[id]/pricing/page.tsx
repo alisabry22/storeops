@@ -19,6 +19,7 @@ import { type PricingStrategy, getStrategy } from "@/lib/pricing-strategies";
 import { AiRepricePanel } from "@/components/AiRepricePanel";
 import { SnapshotConfirmDialog } from "@/components/SnapshotConfirmDialog";
 import { ApplySuccessDialog } from "@/components/ApplySuccessDialog";
+import { UpdateStatus } from "@/components/UpdateStatus";
 import type {
   AppPrice,
   AppPricePoint,
@@ -686,6 +687,13 @@ export default function PricingPage() {
         <p className="text-sm text-red-400 bg-red-950/40 border border-red-900 rounded-md px-3 py-2 mb-4">
           {error}
         </p>
+      )}
+
+      {applying && (
+        <UpdateStatus
+          title="Updating Apple pricing…"
+          detail="Your price schedule is being sent to App Store Connect. Keep this page open until it finishes."
+        />
       )}
 
       {applySummary && (
