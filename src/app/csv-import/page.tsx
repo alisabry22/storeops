@@ -69,7 +69,7 @@ JPN,JPY,750`}
       </section>
 
       <section className="mb-12">
-        <h2 className="text-2xl font-bold mb-4">The AI repricing workflow</h2>
+        <h2 className="text-2xl font-bold mb-4">The controlled pricing workflow</h2>
         <p className="text-zinc-400 leading-relaxed mb-4">
           StoreOps includes a built-in AI prompt you can copy and paste into ChatGPT or Claude.
           The prompt includes your current prices and asks for purchasing power parity

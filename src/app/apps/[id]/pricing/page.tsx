@@ -15,7 +15,7 @@ import {
   parsePriceSheet,
   snapToPricePoint,
 } from "@/lib/pricing-import";
-import { type PricingStrategy, getStrategy } from "@/lib/pricing-strategies";
+import { type PricingStrategy } from "@/lib/pricing-strategies";
 import { AiRepricePanel } from "@/components/AiRepricePanel";
 import { SnapshotConfirmDialog } from "@/components/SnapshotConfirmDialog";
 import { ApplySuccessDialog } from "@/components/ApplySuccessDialog";
@@ -139,7 +139,6 @@ export default function PricingPage() {
     total: number;
   } | null>(null);
   const [keepExistingManual, setKeepExistingManual] = useState(true);
-  const [copiedPrompt, setCopiedPrompt] = useState(false);
   const [strategy, setStrategy] = useState<PricingStrategy>("ppp");
 
   // Pro gate + snapshots
@@ -635,12 +634,6 @@ export default function PricingPage() {
     URL.revokeObjectURL(url);
   }
 
-  async function copyAiPrompt() {
-    await navigator.clipboard.writeText(getStrategy(strategy).buildPrompt(buildCsv(currentPrices)));
-    setCopiedPrompt(true);
-    setTimeout(() => setCopiedPrompt(false), 2000);
-  }
-
   function saveNamedSnapshot(label: string) {
     takeSnapshot({
       appId: id,
@@ -723,8 +716,6 @@ export default function PricingPage() {
           onResult={async (csv) => { setSheetText(csv); await buildImportPreview(csv); }}
           disabled={currentPrices.length === 0}
           onExportCsv={exportCsv}
-          onCopyPrompt={copyAiPrompt}
-          copiedPrompt={copiedPrompt}
         />
         <textarea
           value={sheetText}

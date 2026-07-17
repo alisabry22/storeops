@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useCredentials } from "@/lib/store";
 import { ascFetch, ascFetchAllFull, AscError } from "@/lib/asc/client";
 import { AppTabs } from "@/components/AppTabs";
@@ -11,7 +11,8 @@ import { TopBar } from "@/components/TopBar";
 import { useIsPro } from "@/lib/license";
 import { takeSnapshot, type PriceSnapshot } from "@/lib/snapshots";
 import { buildCsv, parsePriceSheet, snapToPricePoint } from "@/lib/pricing-import";
-import { type PricingStrategy, getStrategy } from "@/lib/pricing-strategies";
+import { STRATEGIES, type PricingStrategy } from "@/lib/pricing-strategies";
+import { pricingPolicyMultiplier, stagePriceTowardTarget } from "@/lib/pricing-policy";
 import { AiRepricePanel } from "@/components/AiRepricePanel";
 import { SnapshotConfirmDialog } from "@/components/SnapshotConfirmDialog";
 import { ApplySuccessDialog } from "@/components/ApplySuccessDialog";
@@ -33,12 +34,15 @@ interface SubImportRow {
   snappedPrice: string;
   pointId: string;
   note: string | null;
+  changePercent: number | null;
+  direction: "increase" | "decrease" | "unchanged" | "new";
 }
 
-// One bulk fetch per subscription: all price points for ALL territories
-// (~18 pages at limit=8000) instead of 175 per-territory request bursts
-// that trip Apple's rate limiter. Cached for the session.
+// Partial, session-scoped catalogue. Entries are added only for territories
+// whose requested price changed; Apple recommends filtering this endpoint by
+// territory and plans to require that filter.
 const allPointsCache = new Map<string, Map<string, SubscriptionPricePoint[]>>();
+const PRICE_POINT_TERRITORY_BATCH = 20;
 
 function formatPrice(price: string, currency: string): string {
   const n = Number(price);
@@ -81,7 +85,6 @@ function resolvePrices(
 
 export default function SubscriptionsPage() {
   const { id } = useParams<{ id: string }>();
-  const router = useRouter();
   const { credentials } = useCredentials();
 
   const [hydrated, setHydrated] = useState(false);
@@ -108,8 +111,15 @@ export default function SubscriptionsPage() {
     warnings: string[];
   } | null>(null);
   const [snapshotDialog, setSnapshotDialog] = useState(false);
-  const [copiedPrompt, setCopiedPrompt] = useState(false);
   const [strategy, setStrategy] = useState<PricingStrategy>("ppp");
+  const [pricingMode, setPricingMode] = useState<"anchor" | "adjust">("anchor");
+  const [anchorPoints, setAnchorPoints] = useState<SubscriptionPricePoint[]>([]);
+  const [selectedAnchorPointId, setSelectedAnchorPointId] = useState("");
+  const [anchorMaxChangePercent, setAnchorMaxChangePercent] = useState(25);
+  const [applyFullAnchorTarget, setApplyFullAnchorTarget] = useState(false);
+  const [anchorLoading, setAnchorLoading] = useState(false);
+  const [preserveExistingSubscribers, setPreserveExistingSubscribers] = useState(true);
+  const [acknowledgedImpact, setAcknowledgedImpact] = useState(false);
 
   // Pro gate + snapshots
   const isPro = useIsPro();
@@ -185,6 +195,8 @@ export default function SubscriptionsPage() {
 
   useEffect(() => {
     if (selectedSubId) {
+      setAnchorPoints([]);
+      setSelectedAnchorPointId("");
       setImportPreview(null);
       setSheetText("");
       setApplied(false);
@@ -231,34 +243,187 @@ export default function SubscriptionsPage() {
     return m;
   }, [currentPrices]);
 
-  /** Fetch ALL price points for the subscription in one paginated pull, grouped by territory. */
-  async function loadAllPricePoints(): Promise<Map<string, SubscriptionPricePoint[]>> {
-    const cached = allPointsCache.get(selectedSubId);
-    if (cached) return cached;
+  const previewImpact = useMemo(() => {
+    const rows = importPreview ?? [];
+    return {
+      increases: rows.filter((row) => row.direction === "increase").length,
+      decreases: rows.filter((row) => row.direction === "decrease").length,
+      highRisk: rows.filter((row) => row.changePercent !== null && Math.abs(row.changePercent) > 25).length,
+    };
+  }, [importPreview]);
+
+  function pricePointCacheKey(): string {
+    return `${credentials?.issuerId ?? "unknown"}:${selectedSubId}`;
+  }
+
+  function addPricePointsToCache(
+    cache: Map<string, SubscriptionPricePoint[]>,
+    points: SubscriptionPricePoint[]
+  ) {
+    for (const point of points) {
+      const territoryRef = point.relationships?.territory?.data;
+      if (!territoryRef || Array.isArray(territoryRef)) continue;
+      const existing = cache.get(territoryRef.id) ?? [];
+      existing.push(point);
+      cache.set(territoryRef.id, existing);
+    }
+  }
+
+  async function fetchPricePointTerritories(
+    territoryIds: string[]
+  ): Promise<SubscriptionPricePoint[]> {
     const { data } = await ascFetchAllFull<SubscriptionPricePoint>(
       credentials!,
       `/v1/subscriptions/${selectedSubId}/pricePoints`,
-      { include: "territory", limit: "8000" }
+      {
+        "filter[territory]": territoryIds.join(","),
+        "fields[subscriptionPricePoints]": "customerPrice,territory",
+        "fields[territories]": "currency",
+        include: "territory",
+        limit: "8000",
+      }
     );
-    const byTerritory = new Map<string, SubscriptionPricePoint[]>();
-    for (const p of data) {
-      const terrRef = p.relationships?.territory?.data;
-      if (!terrRef || Array.isArray(terrRef)) continue;
-      const arr = byTerritory.get(terrRef.id) ?? [];
-      arr.push(p);
-      byTerritory.set(terrRef.id, arr);
-    }
-    allPointsCache.set(selectedSubId, byTerritory);
-    return byTerritory;
+    return data;
   }
 
-  async function buildImportPreview(csvOverride?: string) {
+  /** Load only missing territories. Multi-value filter falls back to single territory requests. */
+  async function loadPricePointsForTerritories(
+    requestedTerritories: string[],
+    onProgress: (done: number, total: number) => void
+  ): Promise<Map<string, SubscriptionPricePoint[]>> {
+    const cacheKey = pricePointCacheKey();
+    const cached = allPointsCache.get(cacheKey) ?? new Map<string, SubscriptionPricePoint[]>();
+    allPointsCache.set(cacheKey, cached);
+    const unique = [...new Set(requestedTerritories)];
+    // Empty entries can be left by an interrupted/older preview. Treat them as
+    // misses so a refresh heals the cache instead of repeating "no points".
+    const missing = unique.filter((territoryId) => (cached.get(territoryId)?.length ?? 0) === 0);
+    let done = unique.length - missing.length;
+    onProgress(done, unique.length);
+
+    for (let index = 0; index < missing.length; index += PRICE_POINT_TERRITORY_BATCH) {
+      const batch = missing.slice(index, index + PRICE_POINT_TERRITORY_BATCH);
+      try {
+        const batchPoints = await fetchPricePointTerritories(batch);
+        addPricePointsToCache(cached, batchPoints);
+        const returnedTerritories = new Set(
+          batchPoints.flatMap((point) => {
+            const ref = point.relationships?.territory?.data;
+            return ref && !Array.isArray(ref) ? [ref.id] : [];
+          })
+        );
+        // A successful response that silently ignores part of a multi-value
+        // filter is treated like an old ASC implementation: fill only those
+        // missing territories with single-filter requests.
+        for (const territoryId of batch.filter((id) => !returnedTerritories.has(id))) {
+          const territoryPoints = await fetchPricePointTerritories([territoryId]);
+          // A single-territory filtered response is unambiguous even if an
+          // older ASC response omits relationship linkage.
+          cached.set(territoryId, territoryPoints);
+        }
+        done += batch.length;
+        onProgress(done, unique.length);
+      } catch (error) {
+        // Some ASC deployments have historically handled array filters
+        // inconsistently. Preserve compatibility by retrying this batch one
+        // territory at a time, never by downloading the global catalogue.
+        if (!(error instanceof AscError) || error.status !== 400 || batch.length === 1) throw error;
+        for (const territoryId of batch) {
+          const territoryPoints = await fetchPricePointTerritories([territoryId]);
+          cached.set(territoryId, territoryPoints);
+          done += 1;
+          onProgress(done, unique.length);
+        }
+      }
+    }
+    return cached;
+  }
+
+  async function loadUsAnchorPoints() {
+    if (!credentials || !selectedSubId) return;
+    setAnchorLoading(true);
+    setError("");
+    try {
+      const points = await fetchPricePointTerritories(["USA"]);
+      const sorted = [...points].sort(
+        (left, right) => Number(left.attributes.customerPrice) - Number(right.attributes.customerPrice)
+      );
+      setAnchorPoints(sorted);
+      const preferred = sorted.find((point) => Number(point.attributes.customerPrice) === 29.99);
+      setSelectedAnchorPointId(preferred?.id ?? sorted[0]?.id ?? "");
+      if (sorted.length === 0) setError("Apple returned no USA anchor price points for this subscription.");
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : String(loadError));
+    } finally {
+      setAnchorLoading(false);
+    }
+  }
+
+  async function generateAnchorPreview() {
+    if (!credentials || !selectedAnchorPointId) return;
+    setAnchorLoading(true);
+    setError("");
+    try {
+      const selectedPoint = anchorPoints.find((point) => point.id === selectedAnchorPointId);
+      if (!selectedPoint) throw new Error("Choose a valid USA anchor price.");
+      const { data: equalized, included } = await ascFetchAllFull<
+        SubscriptionPricePoint,
+        Territory
+      >(credentials, `/v1/subscriptionPricePoints/${selectedAnchorPointId}/equalizations`, {
+        include: "territory",
+        "fields[subscriptionPricePoints]": "customerPrice,territory",
+        "fields[territories]": "currency",
+        limit: "200",
+      });
+      const currencyByTerritory = new Map(territoriesMap);
+      for (const territory of included) {
+        if (territory.type === "territories") currencyByTerritory.set(territory.id, territory.attributes.currency);
+      }
+      const baselinePoints: Array<{ territoryId: string; point: SubscriptionPricePoint }> = [
+        { territoryId: "USA", point: selectedPoint },
+      ];
+      for (const point of equalized) {
+        const ref = point.relationships?.territory?.data;
+        if (ref && !Array.isArray(ref) && ref.id !== "USA") baselinePoints.push({ territoryId: ref.id, point });
+      }
+
+      const currentByTerritory = new Map(activePrices.map((price) => [price.territoryId, Number(price.customerPrice)]));
+      const finalTargets = new Map<string, number>();
+      const csvRows = baselinePoints.map(({ territoryId, point }) => {
+        const equalizedPrice = Number(point.attributes.customerPrice);
+        const finalTarget = equalizedPrice * pricingPolicyMultiplier(strategy, territoryId);
+        const currentPrice = currentByTerritory.get(territoryId) ?? null;
+        const stagedTarget = territoryId === "USA" || applyFullAnchorTarget
+          ? finalTarget
+          : stagePriceTowardTarget(currentPrice, finalTarget, anchorMaxChangePercent);
+        finalTargets.set(territoryId, finalTarget);
+        return {
+          territoryId,
+          currency: currencyByTerritory.get(territoryId) ?? (territoryId === "USA" ? "USD" : ""),
+          customerPrice: String(Math.round(stagedTarget * 10_000) / 10_000),
+        };
+      });
+      const csv = buildCsv(csvRows);
+      setSheetText(csv);
+      await buildImportPreview(csv, finalTargets);
+    } catch (previewError) {
+      setError(previewError instanceof Error ? previewError.message : String(previewError));
+    } finally {
+      setAnchorLoading(false);
+    }
+  }
+
+  async function buildImportPreview(
+    csvOverride?: string,
+    finalPolicyTargets?: Map<string, number>
+  ) {
     const _text = csvOverride ?? sheetText;
     if (!credentials || !_text.trim() || !selectedSubId) return;
     setError("");
     setApplied(false);
     setApplySummary(null);
     setImportPreview(null);
+    setAcknowledgedImpact(false);
 
     const { rows, warnings } = parsePriceSheet(_text);
     const allWarnings = [...warnings];
@@ -277,12 +442,25 @@ export default function SubscriptionsPage() {
       return;
     }
 
-    setImportProgress({ done: 0, total: valid.length });
-    try {
-      // One bulk fetch for every territory's price points (cached per subscription)
-      const pointsByTerritory = await loadAllPricePoints();
+    const activeByTerritory = new Map(activePrices.map((price) => [price.territoryId, Number(price.customerPrice)]));
+    const changed = valid.filter((row) => {
+      const current = activeByTerritory.get(row.territoryId);
+      return current === undefined || Math.abs(current - row.price) > 0.000001;
+    });
+    if (changed.length === 0) {
+      setImportWarnings(allWarnings);
+      setError("No price changes to preview. Every requested price already matches the active price.");
+      return;
+    }
 
-      const resolved = valid.map((row) => {
+    setImportProgress({ done: 0, total: changed.length });
+    try {
+      const pointsByTerritory = await loadPricePointsForTerritories(
+        changed.map((row) => row.territoryId),
+        (done, total) => setImportProgress({ done, total })
+      );
+
+      const resolved = changed.map((row) => {
         const points = pointsByTerritory.get(row.territoryId);
         if (!points || points.length === 0) {
           allWarnings.push(`${row.territoryId}: no price points available — skipped`);
@@ -295,21 +473,40 @@ export default function SubscriptionsPage() {
         }
         const snappedPrice = snapped.attributes.customerPrice;
         const wasSnapped = Number(snappedPrice) !== row.price;
+        const currentPrice = activePrices.find((r) => r.territoryId === row.territoryId)?.customerPrice ?? null;
+        const current = currentPrice === null ? null : Number(currentPrice);
+        const next = Number(snappedPrice);
+        const changePercent = current && current > 0 ? ((next - current) / current) * 100 : null;
+        const direction = current === null ? "new" : next > current ? "increase" : next < current ? "decrease" : "unchanged";
+        if (changePercent !== null && Math.abs(changePercent) > 25) {
+          allWarnings.push(`${row.territoryId}: ${changePercent.toFixed(0)}% ${direction}; explicit confirmation required.`);
+        }
+        const finalPolicyTarget = finalPolicyTargets?.get(row.territoryId);
+        const notes = [
+          wasSnapped ? `snapped from ${row.price}` : null,
+          finalPolicyTarget !== undefined && Math.abs(finalPolicyTarget - row.price) > 0.000001
+            ? `final policy target ${finalPolicyTarget.toFixed(2)}; staged by movement cap`
+            : null,
+        ].filter((value): value is string => value !== null);
         return {
           territoryId: row.territoryId,
           currency: territoriesMap.get(row.territoryId) ?? "",
-          currentPrice: activePrices.find((r) => r.territoryId === row.territoryId)?.customerPrice ?? null,
+          currentPrice,
           requested: row.price,
           snappedPrice,
           pointId: snapped.id,
-          note: wasSnapped ? `snapped from ${row.price}` : null,
+          note: notes.length > 0 ? notes.join(" · ") : null,
+          changePercent,
+          direction,
         } satisfies SubImportRow;
       });
-      setImportPreview(
-        resolved
-          .filter((r): r is SubImportRow => r !== null)
-          .sort((a, b) => a.territoryId.localeCompare(b.territoryId))
-      );
+      const previewRows = resolved
+        .filter((r): r is SubImportRow => r !== null)
+        .sort((a, b) => a.territoryId.localeCompare(b.territoryId));
+      setImportPreview(previewRows.length > 0 ? previewRows : null);
+      if (previewRows.length === 0) {
+        setError("Apple returned price points, but none could be matched to the requested territories. Refresh and try again; no prices were changed.");
+      }
       setImportWarnings([...allWarnings]);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -340,7 +537,7 @@ export default function SubscriptionsPage() {
    * (current/historical entries 409 on DELETE), then POST the new price.
    */
   async function postPrices(
-    rows: Array<{ territoryId: string; pointId: string }>
+    rows: Array<Pick<SubImportRow, "territoryId" | "pointId" | "currentPrice" | "snappedPrice">>
   ) {
     if (!credentials || !selectedSubId) return;
     let done = 0;
@@ -363,7 +560,7 @@ export default function SubscriptionsPage() {
     for (let i = 0; i < rows.length; i += BATCH) {
       if (i > 0) await sleep(150);
       const batch = rows.slice(i, i + BATCH);
-      await Promise.all(
+      const results = await Promise.allSettled(
         batch.map(async (row) => {
           const existing = currentByTerritory.get(row.territoryId) ?? [];
           // Attempt to cancel any future-scheduled prices. A 409 here means
@@ -399,10 +596,18 @@ export default function SubscriptionsPage() {
           // Post the new price. If Apple rejects the startDate as "too early"
           // (timezone boundary: our UTC tomorrow is still Apple's today), parse
           // the minimum date from the error and retry once with it.
+          const isIncrease = row.currentPrice !== null && Number(row.snappedPrice) > Number(row.currentPrice);
           const subPriceBody = (date: string | null) => ({
             data: {
               type: "subscriptionPrices",
-              attributes: { startDate: date },
+              // CREATE uses preserveCurrentPrice. The similarly named
+              // `preserved` field is read-only and appears only on responses.
+              // Apple only supports preservation for eligible increases;
+              // decreases automatically affect renewals.
+              attributes: {
+                startDate: date,
+                ...(isIncrease ? { preserveCurrentPrice: preserveExistingSubscribers } : {}),
+              },
               relationships: {
                 subscription: { data: { type: "subscriptions", id: selectedSubId } },
                 subscriptionPricePoint: { data: { type: "subscriptionPricePoints", id: row.pointId } },
@@ -434,6 +639,12 @@ export default function SubscriptionsPage() {
           setApplying({ done, total: rows.length });
         })
       );
+      const rejected = results
+        .map((result, index) => result.status === "rejected" ? `${batch[index].territoryId}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}` : null)
+        .filter((value): value is string => value !== null);
+      if (rejected.length > 0) {
+        throw new Error(`Stopped after ${done} successful changes. Some territories may already be scheduled: ${rejected.join(" · ")}`);
+      }
     }
   }
 
@@ -444,9 +655,7 @@ export default function SubscriptionsPage() {
     setApplying({ done: 0, total: importPreview.length });
     try {
       if (withSnapshot) snapshotBeforeApply(snapshotName || `Before import · ${importPreview.length} territories`);
-      await postPrices(
-        importPreview.map((r) => ({ territoryId: r.territoryId, pointId: r.pointId }))
-      );
+      await postPrices(importPreview);
       setApplySummary({
         productLabel:
           subscriptions.find((s) => s.id === selectedSubId)?.attributes.name ?? selectedSubId,
@@ -459,30 +668,83 @@ export default function SubscriptionsPage() {
       await loadPrices(selectedSubId);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      // A batch is not atomic: valid rows in the same batch may have reached
+      // Apple before another row failed. Reconcile immediately so the UI shows
+      // the authoritative active/upcoming state before a retry.
+      await loadPrices(selectedSubId);
     } finally {
       setApplying(null);
     }
   }
 
-  /** Restore a snapshot: re-POST every territory's old price point. */
+  async function cancelPendingSnapshotMistakes(territoryIds: Set<string>) {
+    const pending = upcomingPrices.filter((price) => territoryIds.has(price.territoryId));
+    let cancelled = 0;
+    const becameCurrent = new Set<string>();
+    for (let index = 0; index < pending.length; index += 4) {
+      const batch = pending.slice(index, index + 4);
+      const results = await Promise.allSettled(
+        batch.map((price) => ascFetch(credentials!, `/v1/subscriptionPrices/${price.priceId}`, { method: "DELETE" }))
+      );
+      results.forEach((result, resultIndex) => {
+        if (result.status === "fulfilled") {
+          cancelled += 1;
+          return;
+        }
+        const reason = result.reason;
+        if (reason instanceof AscError && reason.status === 409) {
+          becameCurrent.add(batch[resultIndex].territoryId);
+          return;
+        }
+        // A refresh or another tab may already have removed the schedule.
+        if (reason instanceof AscError && reason.status === 404) return;
+        throw reason;
+      });
+    }
+    return { cancelled, becameCurrent };
+  }
+
+  /** Restore the previous storefront grid at Apple's earliest permitted date. */
   async function restoreSnapshot(snapshot: PriceSnapshot) {
     if (!credentials || !selectedSubId) return;
     setError("");
     setApplying({ done: 0, total: snapshot.rows.length });
     try {
-      await postPrices(
-        snapshot.rows.map((r) => ({ territoryId: r.territoryId, pointId: r.pricePointId }))
+      const activeByTerritory = new Map(activePrices.map((price) => [price.territoryId, price.customerPrice]));
+      const alreadyMatching = snapshot.rows.filter(
+        (row) => activeByTerritory.get(row.territoryId) === row.customerPrice
+      );
+      const cancellation = await cancelPendingSnapshotMistakes(
+        new Set(alreadyMatching.map((row) => row.territoryId))
+      );
+      const rowsToRestore = snapshot.rows.filter(
+        (row) =>
+          activeByTerritory.get(row.territoryId) !== row.customerPrice ||
+          cancellation.becameCurrent.has(row.territoryId)
+      );
+      if (rowsToRestore.length > 0) await postPrices(
+        rowsToRestore.map((r) => ({
+          territoryId: r.territoryId,
+          pointId: r.pricePointId,
+          currentPrice: activePrices.find((price) => price.territoryId === r.territoryId)?.customerPrice ?? null,
+          snappedPrice: r.customerPrice,
+        }))
       );
       setApplySummary({
         productLabel:
           subscriptions.find((s) => s.id === selectedSubId)?.attributes.name ?? selectedSubId,
-        regionsChanged: snapshot.rows.length,
-        warnings: [],
+        regionsChanged: rowsToRestore.length + cancellation.cancelled,
+        warnings: [
+          cancellation.cancelled > 0 ? `${cancellation.cancelled} pending price changes were cancelled before taking effect.` : "",
+          rowsToRestore.length > 0 ? `${rowsToRestore.length} previous storefront prices were scheduled at Apple's earliest permitted date.` : "",
+          "Restoration returns the storefront grid; it cannot reverse billing that already occurred.",
+        ].filter(Boolean),
       });
       setApplied(true);
       await loadPrices(selectedSubId);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      await loadPrices(selectedSubId);
     } finally {
       setApplying(null);
     }
@@ -503,17 +765,6 @@ export default function SubscriptionsPage() {
     a.download = `sub-prices-${subName.replace(/[^a-z0-9]/gi, "-").toLowerCase()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-  }
-
-  async function copyAiPrompt() {
-    const rows = activePrices.map((r) => ({
-      territoryId: r.territoryId,
-      currency: r.currency,
-      customerPrice: r.customerPrice,
-    }));
-    await navigator.clipboard.writeText(getStrategy(strategy).buildPrompt(buildCsv(rows)));
-    setCopiedPrompt(true);
-    setTimeout(() => setCopiedPrompt(false), 2000);
   }
 
   function saveNamedSnapshot(label: string) {
@@ -556,7 +807,7 @@ export default function SubscriptionsPage() {
 
       <h1 className="text-xl font-bold mb-1">Subscription pricing</h1>
       <p className="text-sm text-zinc-400 mb-6">
-        Set prices per territory for each subscription. The AI loop works the same way — export, reprice with AI, paste back.
+        Build a new worldwide price system from a store anchor, or make a bounded adjustment to current prices.
       </p>
 
       {error && (
@@ -610,21 +861,62 @@ export default function SubscriptionsPage() {
           <div className="card card-hero p-5 mb-6">
             <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
               <h2 className="font-semibold">
-                Import price sheet{" "}
-                <span className="text-zinc-500 font-normal text-sm">CSV from any AI or spreadsheet</span>
+                Pricing workspace
               </h2>
               </div>
-            <AiRepricePanel
-              getCsv={() => buildCsv(activePrices.map((r) => ({ territoryId: r.territoryId, currency: r.currency, customerPrice: r.customerPrice })))}
-              platform="ios"
-              strategy={strategy}
-              onStrategyChange={setStrategy}
-              onResult={async (csv) => { setSheetText(csv); await buildImportPreview(csv); }}
-              disabled={activePrices.length === 0}
-              onExportCsv={exportCsv}
-              onCopyPrompt={copyAiPrompt}
-              copiedPrompt={copiedPrompt}
-            />
+            <div className="flex gap-2 mb-4">
+              <button onClick={() => setPricingMode("anchor")} className={`rounded-md border px-3 py-2 text-xs ${pricingMode === "anchor" ? "border-emerald-600 bg-emerald-950/50 text-emerald-300" : "border-zinc-700 text-zinc-400"}`}>
+                New worldwide anchor
+              </button>
+              <button onClick={() => setPricingMode("adjust")} className={`rounded-md border px-3 py-2 text-xs ${pricingMode === "adjust" ? "border-emerald-600 bg-emerald-950/50 text-emerald-300" : "border-zinc-700 text-zinc-400"}`}>
+                Adjust current prices
+              </button>
+            </div>
+
+            {pricingMode === "anchor" ? (
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-4 mb-4">
+                <p className="text-sm font-medium text-zinc-200 mb-1">Anchor the worldwide grid to an exact USA price</p>
+                <p className="text-xs text-zinc-500 mb-3">Apple equalizations form the baseline. Market policy adjusts that baseline; the movement cap only stages how far each current price moves this cycle.</p>
+                <div className="flex flex-wrap gap-3 items-end mb-3">
+                  <label className="text-xs text-zinc-400">
+                    <span className="block mb-1">USA anchor</span>
+                    {anchorPoints.length === 0 ? (
+                      <button onClick={loadUsAnchorPoints} disabled={anchorLoading} className="rounded-md border border-zinc-700 px-3 py-2 text-zinc-200 hover:border-emerald-600 disabled:opacity-40">
+                        {anchorLoading ? "Loading USA tiers…" : "Choose USA price"}
+                      </button>
+                    ) : (
+                      <select value={selectedAnchorPointId} onChange={(event) => setSelectedAnchorPointId(event.target.value)} className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100">
+                        {anchorPoints.map((point) => <option key={point.id} value={point.id}>${point.attributes.customerPrice}</option>)}
+                      </select>
+                    )}
+                  </label>
+                  <label className="text-xs text-zinc-400">
+                    <span className="block mb-1">Maximum movement this cycle</span>
+                    <span className="flex items-center gap-1"><input type="number" min={1} max={50} value={anchorMaxChangePercent} onChange={(event) => setAnchorMaxChangePercent(Math.max(1, Math.min(50, Number(event.target.value) || 1)))} className="w-20 rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100" />%</span>
+                  </label>
+                </div>
+                <label className="mb-3 flex items-start gap-2 text-xs text-zinc-400">
+                  <input type="checkbox" checked={applyFullAnchorTarget} onChange={(event) => setApplyFullAnchorTarget(event.target.checked)} className="mt-0.5 accent-amber-500" />
+                  <span>Apply the full policy target now instead of staging local movements. Changes over 25% will still require explicit confirmation.</span>
+                </label>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {STRATEGIES.map((policy) => <button key={policy.key} onClick={() => setStrategy(policy.key)} className={`rounded border px-2.5 py-1 text-xs ${strategy === policy.key ? "border-emerald-700 bg-emerald-950/60 text-emerald-300" : "border-zinc-700 text-zinc-400"}`}>{policy.emoji} {policy.label}</button>)}
+                </div>
+                <button onClick={generateAnchorPreview} disabled={!selectedAnchorPointId || anchorLoading} className="w-full rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600 disabled:opacity-40">
+                  {anchorLoading ? "Building worldwide baseline…" : "Generate anchored preview"}
+                </button>
+              </div>
+            ) : (
+              <AiRepricePanel
+                getCsv={() => buildCsv(activePrices.map((r) => ({ territoryId: r.territoryId, currency: r.currency, customerPrice: r.customerPrice })))}
+                platform="ios"
+                strategy={strategy}
+                onStrategyChange={setStrategy}
+                onResult={async (csv) => { setSheetText(csv); await buildImportPreview(csv); }}
+                disabled={activePrices.length === 0}
+                onExportCsv={exportCsv}
+              />
+            )}
             <textarea
               value={sheetText}
               onChange={(e) => { setSheetText(e.target.value); setImportPreview(null); }}
@@ -658,9 +950,7 @@ export default function SubscriptionsPage() {
                 className="rounded-md bg-zinc-100 text-zinc-950 px-4 py-2 text-sm font-semibold hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition"
               >
                 {importProgress
-                  ? allPointsCache.has(selectedSubId)
-                    ? "Snapping prices…"
-                    : "Loading Apple price tiers (one-time per subscription)…"
+                  ? `Validating Apple tiers ${importProgress.done}/${importProgress.total}…`
                   : "Preview import"}
               </button>
 
@@ -668,7 +958,7 @@ export default function SubscriptionsPage() {
                   !applied ? (
                   <button
                     onClick={() => (isPro ? setSnapshotDialog(true) : setPaywallOpen(true))}
-                    disabled={applying !== null}
+                    disabled={applying !== null || ((previewImpact.decreases > 0 || previewImpact.highRisk > 0) && !acknowledgedImpact)}
                     className="btn-glow rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 disabled:opacity-40 disabled:shadow-none transition"
                   >
                     {applying !== null
@@ -684,12 +974,21 @@ export default function SubscriptionsPage() {
               </div>
 
               {importPreview && !applied && (
-                <p className="mt-2 text-xs text-zinc-400 flex items-start gap-1.5">
-                  <span className="text-emerald-500 mt-px" aria-hidden>✓</span>
-                  <span>
-                    Existing subscribers are <strong className="text-zinc-300 font-medium">always grandfathered</strong> by Apple — they keep the tier they paid for until they cancel/renew. Only new subscribers see the new price.
-                  </span>
-                </p>
+                <div className="mt-3 rounded-md border border-amber-900/60 bg-amber-950/20 px-3 py-2.5 text-xs text-zinc-300 space-y-2">
+                  {previewImpact.increases > 0 && (
+                    <label className="flex items-start gap-2 cursor-pointer">
+                      <input type="checkbox" checked={preserveExistingSubscribers} onChange={(e) => setPreserveExistingSubscribers(e.target.checked)} className="mt-0.5 accent-emerald-500" />
+                      <span>For the {previewImpact.increases} price increase{previewImpact.increases === 1 ? "" : "s"}, request that Apple preserve existing subscriber prices where allowed.</span>
+                    </label>
+                  )}
+                  {previewImpact.decreases > 0 && <p className="text-amber-300">{previewImpact.decreases} decrease{previewImpact.decreases === 1 ? "" : "s"} will lower renewal prices for existing subscribers. Apple does not offer preservation for decreases.</p>}
+                  {(previewImpact.decreases > 0 || previewImpact.highRisk > 0) && (
+                    <label className="flex items-start gap-2 cursor-pointer font-medium">
+                      <input type="checkbox" checked={acknowledgedImpact} onChange={(e) => setAcknowledgedImpact(e.target.checked)} className="mt-0.5 accent-amber-500" />
+                      <span>I reviewed the {previewImpact.highRisk > 0 ? `${previewImpact.highRisk} change${previewImpact.highRisk === 1 ? "" : "s"} over 25% and ` : ""}subscriber impact. I understand this cannot be automatically undone after it takes effect.</span>
+                    </label>
+                  )}
+                </div>
               )}
 
             {importWarnings.length > 0 && (
@@ -708,6 +1007,7 @@ export default function SubscriptionsPage() {
                         <th className="px-4 py-2 font-medium">Current</th>
                         <th className="px-4 py-2 font-medium">Sheet says</th>
                         <th className="px-4 py-2 font-medium">Will set</th>
+                        <th className="px-4 py-2 font-medium">Change</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -721,6 +1021,9 @@ export default function SubscriptionsPage() {
                           <td className="px-4 py-2 font-mono">
                             {formatPrice(r.snappedPrice, r.currency)}
                             {r.note && <span className="ml-2 text-xs text-amber-400">{r.note}</span>}
+                          </td>
+                          <td className={`px-4 py-2 font-mono text-xs ${r.direction === "decrease" ? "text-amber-300" : r.direction === "increase" ? "text-emerald-300" : "text-zinc-500"}`}>
+                            {r.changePercent === null ? "New" : `${r.changePercent > 0 ? "+" : ""}${r.changePercent.toFixed(0)}%`}
                           </td>
                         </tr>
                       ))}

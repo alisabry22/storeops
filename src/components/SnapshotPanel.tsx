@@ -22,6 +22,7 @@ export function SnapshotPanel({
   onRestore,
   onSave,
   busy,
+  platform = "apple",
 }: {
   appId: string;
   scope: string;
@@ -29,6 +30,7 @@ export function SnapshotPanel({
   onRestore: (snapshot: PriceSnapshot) => void;
   onSave?: (label: string) => void;
   busy: boolean;
+  platform?: "apple" | "google";
 }) {
   const [snapshots, setSnapshots] = useState<PriceSnapshot[]>([]);
   const [confirmId, setConfirmId] = useState<string | null>(null);
@@ -62,9 +64,14 @@ export function SnapshotPanel({
 
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 mb-6">
-      <h3 className="text-sm font-semibold mb-1">Snapshots</h3>
+      <div className="flex items-center gap-2 mb-1">
+        <h3 className="text-sm font-semibold">Pricing history</h3>
+        {platform === "google" && <span className="rounded-full border border-emerald-800 bg-emerald-950/50 px-2 py-0.5 text-[10px] font-medium text-emerald-300">Reusable restore points</span>}
+      </div>
       <p className="text-xs text-zinc-500 mb-3">
-        Restore any snapshot to roll prices back exactly as they were. Export to keep a backup outside the browser.
+        {platform === "google"
+          ? "Restore any saved regional storefront grid in one click. StoreOps saves the current grid first, so every restore is itself reversible. Subscription cohort and completed billing history are not rewritten."
+          : "Restore the previous storefront grid in one click. Pending mistakes are cancelled; effective changes are scheduled back at Apple’s earliest permitted date. Billing already completed cannot be reversed."}
       </p>
 
       {onSave && (
@@ -136,7 +143,7 @@ export function SnapshotPanel({
                       disabled={busy}
                       className="text-xs rounded-md border border-zinc-700 px-3 py-1.5 text-zinc-300 hover:border-amber-500 hover:text-amber-400 disabled:opacity-40 transition"
                     >
-                      ↺ Restore
+                      ↺ {platform === "google" ? "Restore pricing" : "Restore"}
                     </button>
                     <button
                       onClick={() => {

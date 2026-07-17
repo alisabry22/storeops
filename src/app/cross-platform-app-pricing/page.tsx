@@ -5,7 +5,7 @@ import { SITE_URL } from "@/lib/site";
 export const metadata: Metadata = {
   title: "Cross-Platform App Pricing — App Store + Google Play in One Tool",
   description:
-    "Keep iOS and Android prices consistent worldwide. Export from both stores, reprice with one AI strategy, and apply back to App Store Connect and Play Console — with diff previews and rollback on both.",
+    "Keep iOS and Android prices consistent worldwide with controlled policies, diff previews, Apple corrective restores, and reusable Google Play pricing snapshots.",
   alternates: { canonical: `${SITE_URL}/cross-platform-app-pricing` },
   openGraph: {
     title: "Cross-Platform App Pricing — App Store + Google Play in One Tool",
@@ -85,7 +85,7 @@ export default function CrossPlatformPricingPage() {
             {
               step: "Apply with previews on both sides",
               detail:
-                "Apple prices snap to valid tiers, Google prices apply exactly. Diff preview before anything is written; automatic snapshot on both stores for one-click rollback.",
+                "Apple prices snap to valid tiers and restore at Apple’s earliest permitted date. Google prices apply exactly and can return to any saved storefront pricing snapshot.",
             },
           ].map((s, i) => (
             <li key={s.step} className="flex gap-4">

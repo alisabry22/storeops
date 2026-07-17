@@ -11,7 +11,7 @@ import { TopBar } from "@/components/TopBar";
 import { useIsPro } from "@/lib/license";
 import { takeSnapshot, type PriceSnapshot } from "@/lib/snapshots";
 import { buildCsv, parsePriceSheet, snapToPricePoint } from "@/lib/pricing-import";
-import { type PricingStrategy, getStrategy } from "@/lib/pricing-strategies";
+import { type PricingStrategy } from "@/lib/pricing-strategies";
 import { AiRepricePanel } from "@/components/AiRepricePanel";
 import { SnapshotConfirmDialog } from "@/components/SnapshotConfirmDialog";
 import { ApplySuccessDialog } from "@/components/ApplySuccessDialog";
@@ -112,7 +112,6 @@ export default function IapPage() {
     warnings: string[];
   } | null>(null);
   const [snapshotDialog, setSnapshotDialog] = useState(false);
-  const [copiedPrompt, setCopiedPrompt] = useState(false);
   const [strategy, setStrategy] = useState<PricingStrategy>("ppp");
 
   // Pro gate + snapshots
@@ -462,17 +461,6 @@ export default function IapPage() {
     URL.revokeObjectURL(url);
   }
 
-  async function copyAiPrompt() {
-    const rows = currentPrices.map((r) => ({
-      territoryId: r.territoryId,
-      currency: r.currency,
-      customerPrice: r.customerPrice,
-    }));
-    await navigator.clipboard.writeText(getStrategy(strategy).buildPrompt(buildCsv(rows)));
-    setCopiedPrompt(true);
-    setTimeout(() => setCopiedPrompt(false), 2000);
-  }
-
   function saveNamedSnapshot(label: string) {
     if (!selectedIapId) return;
     takeSnapshot({
@@ -584,8 +572,6 @@ export default function IapPage() {
               onResult={async (csv) => { setSheetText(csv); await buildImportPreview(csv); }}
               disabled={currentPrices.length === 0}
               onExportCsv={exportCsv}
-              onCopyPrompt={copyAiPrompt}
-              copiedPrompt={copiedPrompt}
             />
             <textarea
               value={sheetText}

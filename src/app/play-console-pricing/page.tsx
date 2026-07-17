@@ -5,7 +5,7 @@ import { SITE_URL } from "@/lib/site";
 export const metadata: Metadata = {
   title: "Play Console Pricing Tool — Regional Prices Without the Clicking",
   description:
-    "A faster way to manage Play Console pricing: set in-app product and subscription prices for every region from one CSV, with AI-suggested local pricing and one-click rollback.",
+    "A faster way to manage Play Console pricing: set in-app product and subscription prices for every region from one strict CSV, with controlled policy previews and corrective-change snapshots.",
   alternates: { canonical: `${SITE_URL}/play-console-pricing` },
   openGraph: {
     title: "Play Console Pricing Tool — Regional Prices Without the Clicking",

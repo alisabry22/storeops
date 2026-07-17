@@ -36,9 +36,9 @@ Then open http://localhost:3000 and connect with your App Store Connect API key
 - [x] Apps list
 - [x] Metadata bulk editor — description, keywords, promo text, What's New across all locales, "apply to all", char counters, per-locale save log
 - [x] Pricing matrix — set base price, preview all ~175 territories (dry run), override individual countries, one-click apply (`appPriceSchedules`)
-- [x] **AI pricing loop** — export current prices as CSV, copy a ready-made AI prompt with your data, paste the AI's repriced CSV back, prices snap to valid Apple price points, diff preview, one apply. Existing manual prices are preserved unless you say otherwise
-- [x] **Subscription pricing** — list all subscriptions, export/import prices per territory with the same AI loop, snap to valid Apple subscription tiers, `preserveCurrentLocalizedPrices` toggle to protect existing subscribers
-- [x] **Snapshots & rollback** — automatic local snapshot before every apply; one-click restore puts prices back exactly as they were
+- [x] **Controlled pricing policy** — create a bounded, deterministic regional adjustment from current localized prices, snap to valid store price points, then review the diff before applying. StoreOps never lets an AI invent a production price.
+- [x] **Subscription pricing** — list all subscriptions, import strict price sheets, snap to valid Apple subscription tiers, and explicitly request existing-subscriber preservation for eligible increases.
+- [x] **Snapshots & corrective changes** — automatic snapshot before every apply; restore creates a new corrective schedule. Effective subscription decreases cannot be undone retroactively.
 - [x] **Pro licensing (Lemon Squeezy)** — free tier: browse/preview/export; Pro: all writes. No accounts, no database — buy → license key → activate. Set `NEXT_PUBLIC_LS_CHECKOUT_URL` (see `.env.example`)
 - [ ] MCP server — let AI agents drive StoreOps directly (list apps, read prices, apply sheets)
 - [ ] App name / subtitle editing (`appInfoLocalizations`)

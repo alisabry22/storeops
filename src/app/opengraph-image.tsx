@@ -68,7 +68,7 @@ export default function OgImage() {
             display: "flex",
           }}
         >
-          Bulk metadata · AI repricing · 175 storefronts · one-click rollback
+          Bulk metadata · controlled pricing · 175 storefronts · reviewable changes
         </div>
       </div>
     ),

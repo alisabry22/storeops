@@ -4,82 +4,35 @@ import { getDb } from "@/db";
 import { users } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getUserId } from "@/lib/server/auth";
-import { GP_NOT_BILLABLE, GP_USD_PRICE_CAPS } from "@/lib/gp/types";
-import { getStrategy, type PricingStrategy } from "@/lib/pricing-strategies";
+import type { PricingStrategy } from "@/lib/pricing-strategies";
 
 const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY ?? "" });
-
-function buildConstraints(platform: "ios" | "android"): string {
-  const base = [
-    "\n\nHARD CONSTRAINTS — these override everything above and must be followed exactly:",
-    "- Return ONLY the CSV. No explanation, no markdown, no code fences — just the raw CSV rows.",
-    "- Include every territory from the input. Do not add or remove territories.",
-    "- Do NOT change territory/region codes.",
-  ];
-
-  if (platform === "android") {
-    const capsNote = Object.entries(GP_USD_PRICE_CAPS)
-      .map(([code, { min, max }]) => `  - ${code}: min $${min} USD, max $${max} USD`)
-      .join("\n");
-    base.push(
-      `- Do NOT include these regions (not billable on Google Play): ${[...GP_NOT_BILLABLE].join(", ")}`,
-      "- These regions use USD but have Google-imposed price limits:",
-      capsNote,
-      "- Do NOT change the currency column — use exactly the currency shown per region.",
-    );
-  }
-
-  return base.join("\n");
-}
-
+const ALLOWED_STRATEGIES = new Set<PricingStrategy>(["ppp", "growth", "revenue", "retention", "enterprise"]);
+/**
+ * AI may help a developer configure a bounded policy, but it never returns
+ * production territory prices. Actual price calculation stays deterministic.
+ */
 export async function POST(req: NextRequest) {
   const userId = await getUserId();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
   const db = getDb();
   const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-  if (!user || user.plan === "free") {
-    return NextResponse.json(
-      { error: "AI Reprice requires a Pro or Lifetime plan." },
-      { status: 403 }
-    );
-  }
+  if (!user || user.plan === "free") return NextResponse.json({ error: "AI policy assistant requires Pro or Lifetime." }, { status: 403 });
 
-  const body = await req.json() as {
-    csv: string;
-    strategy: PricingStrategy;
-    customInstructions?: string;
-    platform?: "ios" | "android";
-  };
-
-  const { csv, strategy, customInstructions, platform = "android" } = body;
-  if (!csv || !strategy) {
-    return NextResponse.json({ error: "Missing csv or strategy" }, { status: 400 });
-  }
-
-  const basePrompt = getStrategy(strategy)
-    .buildPrompt(csv)
-    .replaceAll("iOS app", platform === "android" ? "Android app" : "iOS app")
-    .replaceAll("App Store territories", platform === "android" ? "Google Play regions" : "App Store territories")
-    .replaceAll("ISO 3166-1 alpha-3", platform === "android" ? "ISO 3166-1 alpha-2" : "ISO 3166-1 alpha-3");
-
-  const customBlock = customInstructions?.trim()
-    ? `\n\nAdditional requirements from the developer (apply these on top of the strategy above):\n${customInstructions.trim()}`
-    : "";
-
-  const fullPrompt = basePrompt + customBlock + buildConstraints(platform);
+  const { instructions, platform = "ios" } = await req.json() as { instructions?: string; platform?: "ios" | "android" };
+  if (!instructions?.trim()) return NextResponse.json({ error: "Describe the pricing goal first." }, { status: 400 });
 
   const result = await genAI.models.generateContent({
     model: "gemini-3.1-flash-lite-preview",
-    contents: fullPrompt,
+    contents: `You configure a cautious ${platform} pricing policy. Return JSON only: {"strategy":"ppp|growth|revenue|retention|enterprise","maxChangePercent":number,"summary":"short sentence"}.\n\nUse retention for requests to avoid movement, growth for accessibility/acquisition, revenue for modest increases, enterprise for professional positioning, otherwise ppp. maxChangePercent must be 1 to 50 and should be conservative unless explicitly requested. Never calculate prices, currencies, country lists, or a CSV.\n\nDeveloper request: ${instructions.trim()}`,
+    config: { responseMimeType: "application/json" },
   });
-  const raw = result.text ?? "";
-
-  // Strip any accidental markdown fences the model might add
-  const csvText = raw
-    .replace(/^```[a-z]*\n?/i, "")
-    .replace(/\n?```$/i, "")
-    .trim();
-
-  return NextResponse.json({ csv: csvText });
+  try {
+    const raw = JSON.parse(result.text ?? "{}") as { strategy?: PricingStrategy; maxChangePercent?: number; summary?: string };
+    const strategy = raw.strategy && ALLOWED_STRATEGIES.has(raw.strategy) ? raw.strategy : "ppp";
+    const maxChangePercent = Math.max(1, Math.min(50, Number(raw.maxChangePercent) || 25));
+    return NextResponse.json({ policy: { strategy, maxChangePercent, summary: String(raw.summary ?? "Policy updated. See the generated preview before applying.") } });
+  } catch {
+    return NextResponse.json({ error: "The AI returned an invalid policy. Try a shorter request." }, { status: 502 });
+  }
 }

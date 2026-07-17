@@ -5,12 +5,12 @@ import { SITE_URL } from "@/lib/site";
 export const metadata: Metadata = {
   title: "Google Play Bulk Pricing — Update Prices in Every Country at Once",
   description:
-    "Bulk-edit Google Play prices across all regions from one CSV. In-app products and subscription base plans, AI repricing for purchasing power, diff preview, and one-click rollback.",
+    "Bulk-edit Google Play prices across all regions from one strict CSV. In-app products and subscription base plans with controlled policy previews and reviewable corrective changes.",
   alternates: { canonical: `${SITE_URL}/google-play-bulk-pricing` },
   openGraph: {
     title: "Google Play Bulk Pricing — Update Prices in Every Country at Once",
     description:
-      "Bulk-edit Google Play prices across all regions from one CSV — with AI repricing and rollback.",
+      "Bulk-edit Google Play prices across all regions from one strict CSV — with controlled policy previews and corrective-change snapshots.",
     url: `${SITE_URL}/google-play-bulk-pricing`,
   },
 };
@@ -19,6 +19,14 @@ const faqSchema = {
   "@context": "https://schema.org",
   "@type": "FAQPage",
   mainEntity: [
+    {
+      "@type": "Question",
+      name: "Can I restore an older Google Play pricing configuration?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "Yes. StoreOps saves complete regional storefront pricing snapshots per product and base plan. Restoring a snapshot writes those saved regional amounts back and first saves the grid you are leaving, so the restore is itself reversible. Subscription legacy cohorts and completed billing are not rewritten.",
+      },
+    },
     {
       "@type": "Question",
       name: "How do I bulk update prices on Google Play?",
@@ -65,8 +73,16 @@ export default function GooglePlayBulkPricingPage() {
         Play Console makes you edit prices one region at a time. StoreOps reads
         every regional price via the Play Developer API, lets you reprice them
         as one CSV — by hand or with AI — and applies the whole change in one
-        call, with a snapshot saved first.
+        call, with reusable pricing history saved first.
       </p>
+
+      <section className="mb-12 rounded-xl border border-emerald-900/60 bg-emerald-950/20 p-6">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-emerald-400">Google advantage</p>
+        <h2 className="text-2xl font-bold mb-3">Return to any saved storefront price grid</h2>
+        <p className="text-zinc-400 leading-relaxed">
+          Every apply can save all regional prices as a named restore point. Choose an older snapshot and StoreOps writes those amounts back, after first saving the grid you are leaving. For subscriptions, this restores current pricing for new purchases; Google&apos;s legacy subscriber cohorts remain governed by Play&apos;s cohort rules.
+        </p>
+      </section>
 
       <section className="mb-12">
         <h2 className="text-2xl font-bold mb-4">How it works</h2>
@@ -90,7 +106,7 @@ export default function GooglePlayBulkPricingPage() {
             {
               step: "Preview the diff, apply once",
               detail:
-                "Every change is shown side-by-side before anything is written. One click applies all regions; save a snapshot first so you can roll back anytime.",
+                "Every change is shown side-by-side before anything is written. One click applies all regions; named pricing snapshots let you return to an older storefront grid later.",
             },
           ].map((s, i) => (
             <li key={s.step} className="flex gap-4">

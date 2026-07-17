@@ -39,7 +39,7 @@ export function ApplySuccessDialog({ productLabel, regionsChanged, warnings = []
         </div>
 
         <p className="text-sm text-zinc-400 mb-4">
-          We pushed your new prices to the store. Changes appear in your store console immediately.
+          We submitted your new prices to the store. Review the store console for the scheduled effective date and any subscriber notices Apple requires.
         </p>
 
         <dl className="text-sm space-y-2 mb-4 rounded-md border border-zinc-800 bg-zinc-950/50 px-3 py-3">

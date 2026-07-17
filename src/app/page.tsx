@@ -101,8 +101,8 @@ const FEATURES = [
   },
   {
     emoji: "🤖",
-    title: "AI repricing loop",
-    body: "Export your prices as CSV, let ChatGPT or Claude reprice for purchasing power, paste back. We snap every price to a real Apple tier.",
+    title: "Controlled pricing policies",
+    body: "Start from current localized prices, choose a bounded market policy, and preview every change before it reaches a real Apple tier.",
     saves: "~1 afternoon",
   },
   {
@@ -113,8 +113,8 @@ const FEATURES = [
   },
   {
     emoji: "⏪",
-    title: "Snapshots & rollback",
-    body: "Save a snapshot before applying — then one click puts every price back exactly as it was.",
+    title: "Store-aware pricing history",
+    body: "Return Google Play to any saved storefront grid. On Apple, cancel pending mistakes or schedule the previous prices back at the earliest permitted date.",
     saves: "your sanity",
   },
 ];
@@ -133,7 +133,7 @@ const STEPS = [
   {
     n: "3",
     title: "Apply once",
-    body: "One calm push updates every locale and territory. Save a snapshot first so you can always roll back.",
+    body: "One calm push updates every locale and territory. Save a named pricing snapshot first so you always have a verified recovery path.",
   },
 ];
 
@@ -170,7 +170,7 @@ export default function LandingPage() {
               <span className="block text-emerald-400">Release day is not for 175 storefronts.</span>
             </h1>
             <p className="mt-6 max-w-lg text-lg leading-relaxed text-zinc-400">
-              Update pricing, subscriptions, and &ldquo;What&apos;s New&rdquo; across your stores in one reviewable push — with diffs, progress, and rollback built in.
+              Update pricing, subscriptions, and &ldquo;What&apos;s New&rdquo; across your stores in one reviewable push — with diffs, progress, and corrective-change snapshots.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <div className="w-48">
@@ -218,7 +218,7 @@ export default function LandingPage() {
           {[
             ["Release notes", "Open 40 locales. Paste the same update. Repeat.", "Update every locale from one table."],
             ["Regional pricing", "Click through country after country and hope every tier is valid.", "Import a sheet. Preview the diff. Apply once."],
-            ["Subscription changes", "Touch one wrong setting and worry about existing subscribers.", "Schedule safe changes with rollback ready."],
+            ["Subscription changes", "Touch one wrong setting and worry about existing subscribers.", "Review subscriber impact before scheduling a safe change."],
           ].map(([task, oldWay, newWay]) => (
             <div key={task} className="grid gap-2 py-5 sm:grid-cols-[0.7fr_1fr_1fr] sm:gap-6">
               <h3 className="font-semibold text-zinc-100">{task}</h3>
@@ -332,10 +332,10 @@ export default function LandingPage() {
               <li>✓ Browse all apps, IAPs &amp; subscriptions</li>
               <li>✓ Preview every change as a diff</li>
               <li>✓ Export current prices as CSV</li>
-              <li>✓ Generate AI repricing suggestions</li>
+              <li>✓ Generate bounded policy previews</li>
               <li className="text-zinc-600 mt-1">✗ Apply pricing changes</li>
               <li className="text-zinc-600">✗ Apply metadata changes</li>
-              <li className="text-zinc-600">✗ Snapshots &amp; rollback</li>
+              <li className="text-zinc-600">✗ Pricing snapshots &amp; restores</li>
             </ul>
           </div>
           {lifetimeUrl && (
@@ -356,8 +356,8 @@ export default function LandingPage() {
                 <li>✓ App Store + Google Play — both stores</li>
                 <li>✓ Bulk pricing — IAPs &amp; subscriptions</li>
                 <li>✓ Bulk metadata across all locales</li>
-                <li>✓ AI repricing — apply in one click</li>
-                <li>✓ Snapshots &amp; one-click rollback</li>
+                <li>✓ Controlled policy previews</li>
+                <li>✓ Pricing snapshots &amp; restores</li>
                 <li>✓ All future features included</li>
               </ul>
               <a
@@ -388,8 +388,8 @@ export default function LandingPage() {
               <li>✓ App Store + Google Play — both stores</li>
               <li>✓ Bulk pricing — IAPs &amp; subscriptions</li>
               <li>✓ Bulk metadata across all locales</li>
-              <li>✓ AI repricing — apply in one click</li>
-              <li>✓ Snapshots &amp; one-click rollback</li>
+              <li>✓ Controlled policy previews</li>
+              <li>✓ Pricing snapshots &amp; restores</li>
               <li>✓ Subscriber-safe subscription repricing</li>
             </ul>
             <a

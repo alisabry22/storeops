@@ -115,8 +115,8 @@ export default function AppsPage() {
             <h3 className="font-semibold mb-1">No apps on this key</h3>
             <p className="text-sm text-zinc-400 mb-4 max-w-sm mx-auto">
               The App Store Connect key you connected has no apps visible. This
-              usually means the key's role isn't granted access to any app, or
-              you haven't created an app record yet.
+              usually means the key&apos;s role isn&apos;t granted access to any app, or
+              you haven&apos;t created an app record yet.
             </p>
             <a
               href="https://appstoreconnect.apple.com/apps"

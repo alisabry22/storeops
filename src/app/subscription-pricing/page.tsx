@@ -5,7 +5,7 @@ import { SITE_URL } from "@/lib/site";
 export const metadata: Metadata = {
   title: "Bulk Subscription Prices — Reprice All 175 Territories Without Breaking Subscribers",
   description:
-    "Change App Store subscription prices across all 175 territories at once. Existing subscribers are always grandfathered. CSV import, AI repricing, snapshots and rollback.",
+    "Change App Store subscription prices across all 175 territories with strict CSV import, subscriber-impact controls, and corrective-change snapshots.",
   alternates: { canonical: `${SITE_URL}/subscription-pricing` },
   openGraph: {
     title: "Bulk Subscription Prices — Reprice All 175 Territories Without Breaking Subscribers",
@@ -24,7 +24,7 @@ const faqSchema = {
       name: "Can I change App Store subscription prices in bulk?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "Yes. StoreOps uses the App Store Connect API to update subscription prices across all 175 territories. Export your current prices, reprice with AI, paste back, and apply in one operation.",
+        text: "Yes. StoreOps uses the App Store Connect API to update subscription prices across all 175 territories. Start from current localized prices, generate a bounded policy preview or import a strict CSV, then review before applying.",
       },
     },
     {
@@ -32,7 +32,7 @@ const faqSchema = {
       name: "Will changing subscription prices cancel existing subscribers?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "No. Apple grandfathers existing subscribers at the price they originally paid. When you raise prices, only new subscribers pay the new rate. Existing subscribers keep their plan until they cancel or it lapses.",
+        text: "No subscription is cancelled by a price change. For eligible increases, StoreOps lets you request that Apple preserve existing prices. Decreases lower renewal prices for existing subscribers, which StoreOps highlights before apply.",
       },
     },
     {
@@ -63,7 +63,7 @@ export default function SubscriptionPricingPage() {
       </h1>
       <p className="text-lg text-zinc-400 leading-relaxed mb-10">
         Repricing a subscription across 175 territories is the most nerve-wracking job in App
-        Store Connect. StoreOps automates it — with existing subscribers always protected.
+        Store Connect. StoreOps makes the price and subscriber impact explicit before you apply.
       </p>
 
       <section className="mb-12">
@@ -76,23 +76,22 @@ export default function SubscriptionPricingPage() {
         </p>
         <p className="text-zinc-400 leading-relaxed mb-4">
           Apple&apos;s rules make it more complex: you cannot delete a current price, only schedule
-          a replacement. Existing subscribers are grandfathered automatically, but only if you
-          follow the correct API flow. Get it wrong and you risk a 409 error mid-update,
+          a replacement. For eligible increases, you choose whether to request preservation for
+          existing subscribers; decreases lower existing renewal prices. Get it wrong and you risk a 409 error mid-update,
           leaving prices inconsistent across markets.
         </p>
         <p className="text-zinc-400 leading-relaxed">
-          StoreOps handles all of this automatically — scheduling, rate-limiting, retries, and
-          rollback — so you can reprice confidently in minutes.
+          StoreOps handles scheduling, rate-limiting, retries, and a corrective-change snapshot
+          so you can reprice confidently in minutes.
         </p>
       </section>
 
       <section className="mb-12">
-        <h2 className="text-2xl font-bold mb-4">Existing subscribers are always protected</h2>
+        <h2 className="text-2xl font-bold mb-4">Existing-subscriber impact is explicit</h2>
         <p className="text-zinc-400 leading-relaxed">
-          Apple grandfathers every existing subscriber at the price they originally agreed to.
-          When you raise a subscription price, only new subscribers pay the new rate. StoreOps
-          makes this the default — the scheduling logic automatically handles the Apple API
-          constraint so your subscriber base is never disrupted.
+          Apple treats increases and decreases differently. StoreOps exposes the preservation
+          choice for eligible increases, warns that decreases affect renewals, and requires an
+          acknowledgement for decreases or unusually large movements.
         </p>
       </section>
 
@@ -105,20 +104,20 @@ export default function SubscriptionPricingPage() {
               body: "StoreOps loads all your subscription groups and products. Pick one — monthly, annual, or any tier — and see the current prices for every territory at a glance.",
             },
             {
-              title: "Export and reprice with AI",
-              body: "Export your current prices as CSV. The built-in AI prompt asks for PPP-adjusted pricing so your subscription is fairly priced in every market — affordable in Egypt, standard in the US.",
+              title: "Generate a bounded policy preview",
+              body: "Start from your current localized prices and choose a conservative policy with a maximum movement per territory. StoreOps does not ask an AI to invent production prices.",
             },
             {
               title: "Preview the diff",
-              body: "Paste the AI output back. See exactly what changes before anything touches Apple. Prices snap automatically to valid Apple subscription tiers.",
+              body: "Import a strict CSV or use the policy preview. See exactly what changes before anything touches Apple. Prices snap automatically to valid Apple subscription tiers.",
             },
             {
               title: "Apply — StoreOps handles the scheduling",
               body: "For each territory, StoreOps cancels any existing future scheduled change, then posts your new price — immediate if no current price exists, scheduled for tomorrow if one does. Automatic retry on rate limits.",
             },
             {
-              title: "Roll back if needed",
-              body: "Save a snapshot before applying — one click restores every territory to exactly where it was.",
+              title: "Schedule a corrective change if needed",
+              body: "Save a snapshot before applying. It can schedule a corrective price change later, but cannot undo an effective subscription decrease retroactively.",
             },
           ].map((s, i) => (
             <div key={s.title} className="flex gap-5">

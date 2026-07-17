@@ -5,7 +5,7 @@ import { SITE_URL } from "@/lib/site";
 export const metadata: Metadata = {
   title: "App Store Connect Pricing — Manage Prices Across All 175 Territories",
   description:
-    "A better way to manage App Store Connect pricing. Set app prices, subscription prices, and IAP prices across all 175 territories — with AI repricing, CSV import, and one-click rollback.",
+    "A better way to manage App Store Connect pricing. Set app prices, subscription prices, and IAP prices across all 175 territories — with controlled pricing policies, strict CSV import, and reviewable corrective changes.",
   alternates: { canonical: `${SITE_URL}/app-store-connect-pricing` },
   openGraph: {
     title: "App Store Connect Pricing — Manage Prices Across All 175 Territories",
@@ -82,7 +82,7 @@ export default function AppStoreConnectPricingPage() {
               type: "Subscription pricing",
               href: "/subscription-pricing",
               description:
-                "Recurring prices for auto-renewable subscriptions. Each subscription product has its own price per territory. Existing subscribers are grandfathered when prices change. Changes can be immediate or scheduled.",
+                "Recurring prices for auto-renewable subscriptions. Each subscription product has its own price per territory, with explicit existing-subscriber handling for eligible increases and clear decrease warnings.",
               note: "Per subscription, per territory",
             },
             {

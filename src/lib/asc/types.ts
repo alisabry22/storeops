@@ -124,6 +124,9 @@ export type Subscription = AscResource<SubscriptionAttributes>;
 
 export interface SubscriptionPriceAttributes {
   startDate: string | null;
+  /** Read-only status returned by Apple; CREATE uses preserveCurrentPrice. */
+  preserved?: boolean;
+  planType?: "PREPAID" | "PAY_AS_YOU_GO" | string;
 }
 export type SubscriptionPrice = AscResource<SubscriptionPriceAttributes>;
 

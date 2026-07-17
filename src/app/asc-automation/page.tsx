@@ -45,7 +45,7 @@ export default function AscAutomationPage() {
             <tbody>
               {[
                 ["Setup time", "Hours (Ruby, Gemfile, CI config)", "30 seconds (paste credentials)"],
-                ["Bulk pricing", "Custom script required", "Built-in with AI repricing"],
+                ["Bulk pricing", "Custom script required", "Built-in with controlled policy previews"],
                 ["Preview changes", "No dry-run for pricing", "Always shows diff first"],
                 ["Rollback", "Manual", "One-click snapshot restore"],
                 ["Maintenance", "Keep Ruby and gems updated", "None — browser app"],

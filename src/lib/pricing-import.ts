@@ -1,8 +1,8 @@
 /**
  * CSV price-sheet parsing and price-point snapping.
- * The sheet contract is deliberately loose — AI tools generate CSVs with
- * varying columns. We take: first column = 3-letter territory code,
- * first numeric column after it = price in that territory's local currency.
+ * The sheet contract is intentionally strict. Pricing is a financial write:
+ * accepting the "first number" from arbitrary AI output can set the wrong
+ * column (for example a USD equivalent instead of the local price).
  */
 
 export interface SheetRow {
@@ -25,8 +25,24 @@ export function parsePriceSheet(
   const warnings: string[] = [];
   const seen = new Map<string, number>();
 
-  const lines = text.split(/\r?\n/);
-  lines.forEach((raw, i) => {
+  const lines = text.split(/\r?\n/).filter((line) => line.trim());
+  if (lines.length === 0) return { rows: [], warnings: ["Empty price sheet."] };
+  const header = lines[0].split(/[,;\t]/).map((p) => p.trim().toLowerCase());
+  const territoryColumn = header.findIndex((v) => v === "territory" || v === "region");
+  const priceColumn = header.findIndex((v) => v === "price" || v === "customer_price");
+  const currencyColumn = header.findIndex((v) => v === "currency");
+  if (territoryColumn < 0 || priceColumn < 0) {
+    return {
+      rows: [],
+      warnings: ["Header must include territory and price columns (recommended: territory,currency,price)."],
+    };
+  }
+  if (territoryColumn !== 0) {
+    return { rows: [], warnings: ["territory must be the first column."] };
+  }
+  if (currencyColumn < 0) warnings.push("No currency column supplied. StoreOps will validate territory price points, but cannot verify your intended currency.");
+  lines.slice(1).forEach((raw, index) => {
+    const i = index + 1;
     const line = raw.trim();
     if (!line) return;
     const parts = line
@@ -35,27 +51,17 @@ export function parsePriceSheet(
 
     const territory = (parts[0] ?? "").toUpperCase();
 
-    // Header row: first cell isn't a region code → skip silently on line 1
     if (!codeRe.test(territory)) {
-      if (i > 0) {
-        warnings.push(
-          `Line ${i + 1}: "${parts[0]}" is not a ${codeLength}-letter region code (like ${example}) — skipped`
-        );
-      }
+      warnings.push(
+        `Line ${i + 1}: "${parts[0]}" is not a ${codeLength}-letter region code (like ${example}) — skipped`
+      );
       return;
     }
 
-    let price: number | null = null;
-    for (let j = 1; j < parts.length; j++) {
-      if (!parts[j]) continue;
-      const n = Number(parts[j].replace(/[^0-9.\-]/g, ""));
-      if (!isNaN(n) && parts[j].match(/\d/)) {
-        price = n;
-        break;
-      }
-    }
+    const rawPrice = parts[priceColumn] ?? "";
+    const price = Number(rawPrice.replace(/[^0-9.\-]/g, ""));
 
-    if (price === null || price < 0) {
+    if (!Number.isFinite(price) || price <= 0) {
       warnings.push(`Line ${i + 1}: ${territory} has no valid price — skipped`);
       return;
     }

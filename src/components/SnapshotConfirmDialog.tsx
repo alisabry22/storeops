@@ -32,7 +32,7 @@ export function SnapshotConfirmDialog({ open, defaultName = "", onSaveAndApply, 
         </div>
 
         <p className="text-sm text-zinc-400 mb-4">
-          Snapshots let you <span className="text-zinc-200">revert to any previous price configuration</span> with one click — useful if something looks off after applying.
+          Snapshots let you <span className="text-zinc-200">restore the previous storefront price grid</span> with one click. Pending mistakes are cancelled; effective changes are restored at the store&apos;s earliest permitted date.
         </p>
 
         <label className="block mb-4">

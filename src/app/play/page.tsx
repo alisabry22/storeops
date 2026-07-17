@@ -16,6 +16,7 @@ import {
   type PricingStrategy,
   getStrategy,
 } from "@/lib/pricing-strategies";
+import { generateControlledPriceCsv } from "@/lib/pricing-policy";
 import { storeServiceAccount } from "@/lib/gp/auth";
 import { gpFetch, GpError } from "@/lib/gp/client";
 import { useGpStore } from "@/lib/gp/store";
@@ -124,11 +125,7 @@ export default function PlayPage() {
     regionsChanged: number;
     warnings: string[];
   } | null>(null);
-  const [copiedPrompt, setCopiedPrompt] = useState(false);
   const [strategy, setStrategy] = useState<PricingStrategy>("ppp");
-  const [customInstructions, setCustomInstructions] = useState("");
-  const [aiRepricing, setAiRepricing] = useState(false);
-  const [aiError, setAiError] = useState("");
   const [search, setSearch] = useState("");
 
   // Pro gate + snapshots
@@ -367,62 +364,14 @@ export default function PlayPage() {
     URL.revokeObjectURL(url);
   }
 
-  async function copyAiPrompt() {
-    const csv = buildCsv(exportableRows());
-
-    // Constraints block injected after the CSV so ChatGPT respects Google Play limits.
-    const capsNote = Object.entries(GP_USD_PRICE_CAPS)
-      .map(
-        ([code, { min, max }]) =>
-          `  - ${code}: min $${min} USD, max $${max} USD`,
-      )
-      .join("\n");
-    const constraints = [
-      "",
-      "IMPORTANT GOOGLE PLAY CONSTRAINTS — follow exactly:",
-      `- Do NOT include these regions (not billable on Google Play): ${[...GP_NOT_BILLABLE].join(", ")}`,
-      "- These regions use USD but have Google-imposed price limits:",
-      capsNote,
-      "- Do NOT change the currency column — use exactly the currency shown per region.",
-      "- Return the full CSV with every territory that was given, no extras, no omissions.",
-    ].join("\n");
-
-    // Strategy prompts are written for Apple; adapt the platform specifics.
-    const prompt =
-      getStrategy(strategy)
-        .buildPrompt(csv)
-        .replaceAll("iOS app", "Android app")
-        .replaceAll("App Store territories", "Google Play regions")
-        .replaceAll("ISO 3166-1 alpha-3", "ISO 3166-1 alpha-2") + constraints;
-
-    await navigator.clipboard.writeText(prompt);
-    setCopiedPrompt(true);
-    setTimeout(() => setCopiedPrompt(false), 2000);
-  }
-
-  async function aiReprice() {
+  function generatePolicyPreview() {
     if (currentPrices.length === 0) return;
-    setAiRepricing(true);
-    setAiError("");
     setApplySummary(null);
     try {
-      const csv = buildCsv(exportableRows());
-      const res = await fetch("/api/ai-reprice", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          csv,
-          strategy,
-          customInstructions,
-          platform: "android",
-        }),
-      });
-      const data = (await res.json()) as { csv?: string; error?: string };
-      if (!res.ok || !data.csv)
-        throw new Error(data.error ?? "AI reprice failed");
+      const data = generateControlledPriceCsv(buildCsv(exportableRows()), { strategy, maxChangePercent: 25 });
       // Drop the result into the sheet text and run preview immediately
-      setSheetText(data.csv);
-      const { rows, warnings } = parsePriceSheet(data.csv, { codeLength: 2 });
+      setSheetText(data);
+      const { rows, warnings } = parsePriceSheet(data, { codeLength: 2 });
       const preview: GpImportRow[] = [];
       const warns: string[] = [...warnings];
       for (const row of rows) {
@@ -442,11 +391,7 @@ export default function PlayPage() {
       }
       setImportWarnings(warns);
       setImportPreview(preview.length > 0 ? preview : null);
-    } catch (e) {
-      setAiError(e instanceof Error ? e.message : "AI reprice failed");
-    } finally {
-      setAiRepricing(false);
-    }
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not generate preview"); }
   }
 
   function previewImport() {
@@ -792,10 +737,33 @@ export default function PlayPage() {
       return;
     }
     const changes = new Map(
-      snapshot.rows.map(
-        (r) => [r.territoryId, Number(r.customerPrice)] as const,
-      ),
+      snapshot.rows
+        .filter((row) => {
+          const current = currentByRegion.get(row.territoryId);
+          return current && Number(current.price) !== Number(row.customerPrice);
+        })
+        .map((row) => [row.territoryId, Number(row.customerPrice)] as const),
     );
+    if (changes.size === 0) {
+      setApplySummary({
+        productLabel: refLabel(selectedRef!),
+        regionsChanged: 0,
+        warnings: ["The current Google Play storefront grid already matches this snapshot."],
+      });
+      return;
+    }
+    takeSnapshot({
+      appId: selectedPackage,
+      scope: snapshotScope,
+      label: `Before restoring · ${snapshot.label}`,
+      rows: currentPrices.map((row) => ({
+        territoryId: row.regionCode,
+        pricePointId: "",
+        customerPrice: row.price,
+        currency: row.currency,
+      })),
+    });
+    setSnapRefresh((value) => value + 1);
     await applyChanges(changes);
   }
 
@@ -1070,20 +1038,13 @@ export default function PlayPage() {
                       >
                         ↓ Export CSV
                       </button>
-                      <button
-                        onClick={copyAiPrompt}
-                        disabled={currentPrices.length === 0}
-                        className="text-xs rounded-md border border-zinc-700 px-3 py-1.5 text-zinc-400 hover:border-zinc-500 disabled:opacity-40 transition"
-                      >
-                        {copiedPrompt ? "Copied ✓" : "⧉ Copy prompt"}
-                      </button>
                     </div>
                   </div>
 
-                  {/* AI objective picker */}
+                  {/* Controlled policy picker */}
                   <div className="flex items-center gap-2 flex-wrap mb-3">
                     <span className="text-xs text-zinc-500 shrink-0">
-                      Objective:
+                      Policy:
                     </span>
                     {STRATEGIES.map((s) => (
                       <button
@@ -1106,27 +1067,12 @@ export default function PlayPage() {
                     ))}
                   </div>
 
-                  {/* Custom instructions */}
-                  <textarea
-                    value={customInstructions}
-                    onChange={(e) => setCustomInstructions(e.target.value)}
-                    placeholder="Optional: add your own rules — e.g. keep Egypt under EGP 150, make India very aggressive, don't touch US price..."
-                    rows={2}
-                    className="w-full rounded-md bg-zinc-950 border border-zinc-800 px-3 py-2 text-sm text-zinc-300 placeholder:text-zinc-600 focus:border-emerald-500 focus:outline-none resize-none mb-3"
-                  />
-
-                  {/* AI Reprice button */}
-                  {aiError && (
-                    <p className="text-xs text-red-400 mb-2">{aiError}</p>
-                  )}
                   <button
-                    onClick={aiReprice}
-                    disabled={currentPrices.length === 0 || aiRepricing}
+                    onClick={generatePolicyPreview}
+                    disabled={currentPrices.length === 0}
                     className="w-full rounded-md bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed px-4 py-2 text-sm font-medium text-white transition mb-4"
                   >
-                    {aiRepricing
-                      ? "Repricing…"
-                      : `✦ AI Reprice · ${getStrategy(strategy).emoji} ${getStrategy(strategy).label}`}
+                    {`Generate bounded preview · ${getStrategy(strategy).emoji} ${getStrategy(strategy).label}`}
                   </button>
 
                   <div className="flex items-center gap-3 mb-3">
@@ -1250,6 +1196,7 @@ export default function PlayPage() {
                   onRestore={restoreSnapshot}
                   onSave={saveNamedSnapshot}
                   busy={applying}
+                  platform="google"
                 />
 
                 {/* ---- Current prices ---- */}

@@ -5,7 +5,7 @@ import { SITE_URL } from "@/lib/site";
 export const metadata: Metadata = {
   title: "Bulk App Store Pricing — Change All 175 Storefronts at Once",
   description:
-    "Stop setting App Store prices one country at a time. StoreOps lets you bulk-update pricing across all 175 App Store territories in minutes — CSV import, AI repricing, one-click apply.",
+    "Stop setting App Store prices one country at a time. StoreOps lets you bulk-update pricing across all 175 App Store territories in minutes — strict CSV import, controlled policy previews, and reviewable apply.",
   alternates: { canonical: `${SITE_URL}/bulk-pricing` },
   openGraph: {
     title: "Bulk App Store Pricing — Change All 175 Storefronts at Once",
@@ -32,7 +32,7 @@ const faqSchema = {
       name: "How long does bulk App Store pricing take?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "Typically 2–5 minutes for all 175 territories, including the time to run prices through an AI repricing prompt. Manually, the same job takes an afternoon.",
+        text: "Typically 2–5 minutes for all 175 territories, including reviewing a controlled policy preview. Manually, the same job takes an afternoon.",
       },
     },
     {

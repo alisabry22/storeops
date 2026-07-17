@@ -27,7 +27,10 @@ export interface PriceSnapshot {
 }
 
 const KEY = "storeops.snapshots.v1";
-const MAX_PER_SCOPE = 10;
+// A regional grid is compact enough to retain useful pricing history while
+// still fitting comfortably in the browser fallback store. Signed-in users
+// also receive best-effort server sync.
+const MAX_PER_SCOPE = 25;
 
 function readAll(): PriceSnapshot[] {
   if (typeof window === "undefined") return [];
