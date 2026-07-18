@@ -7,6 +7,7 @@ import { useCredentials } from "@/lib/store";
 import { ascFetch } from "@/lib/asc/client";
 import { destroyPrivateKey, storePrivateKey } from "@/lib/asc/jwt";
 import { RequireAccount } from "@/components/RequireAccount";
+import { useHydrated } from "@/lib/use-hydrated";
 
 /**
  * Store connection hub — the .p8 form lived on the landing page before the
@@ -20,11 +21,7 @@ export default function ConnectPage() {
   const [privateKeyPem, setPrivateKeyPem] = useState("");
   const [status, setStatus] = useState<"idle" | "testing" | "error">("idle");
   const [error, setError] = useState("");
-  const [hydrated, setHydrated] = useState(false);
-
-  useEffect(() => {
-    setHydrated(true);
-  }, []);
+  const hydrated = useHydrated();
 
   useEffect(() => {
     if (hydrated && credentials) router.replace("/apps");
@@ -87,8 +84,8 @@ export default function ConnectPage() {
         <p className="text-sm text-zinc-400 mb-5 leading-relaxed">
           Your .p8 becomes a{" "}
           <strong className="text-zinc-200">non-extractable browser key</strong>{" "}
-          — it signs 20-minute tokens locally and can never be read back, not
-          even by our own code.
+          — its raw key material cannot be exported after import, and it signs
+          20-minute tokens locally.
         </p>
 
         <form onSubmit={connect} className="space-y-4">

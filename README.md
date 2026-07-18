@@ -1,52 +1,112 @@
 # StoreOps
 
-**App Store Connect, without the clicking.**
+**Finish App Store and Google Play operations without losing the afternoon.**
 
-Bulk-edit App Store metadata, pricing, and subscriptions across every storefront. Built for indie devs who ship to 50+ countries and are tired of the App Store Connect UI.
+StoreOps is a cross-store control room for regional pricing, subscriptions,
+in-app products, App Store metadata, and recoverable pricing history.
 
-## Why
+## Product contract
 
-- Updating "What's New" in 40 locales takes an hour of clicking in ASC. Here it's one click.
-- Adjusting prices for some countries but not others is a spreadsheet-and-prayer workflow. Here it's a matrix.
-- Subscription pricing per territory is buried five screens deep. Here it's one table.
+- Connect and inspect both stores for free.
+- Build a worldwide grid from an official store anchor or adjust current prices
+  through a bounded, deterministic policy.
+- Review every change as a current-versus-proposed diff.
+- Confirm a complete browser restore point—and its account copy when accounts
+  are enabled—before every pricing mutation.
+- Apply only with a server-verified Pro or Lifetime entitlement.
+- Enforce the movement cap against the final Apple price point or
+  Google-approved amount immediately before the write.
+- Re-read Apple and Google Play after a successful write and refuse to report
+  completion if the live values do not match.
 
-## Security model (read this first)
+AI is limited to translating a developer's goal into a policy and movement cap.
+It never generates the production price sheet.
 
-Your App Store Connect API key has write access to your whole account, so we designed around never having it:
+## Store behavior
 
-1. Your `.p8` is imported as a **non-extractable WebCrypto key** (IndexedDB). The browser can sign with it but physically cannot export the key material — not even our own JavaScript, an XSS payload, or a browser extension can read it back. The PEM itself is never persisted anywhere.
-2. JWTs are signed **locally in your browser** (ES256), valid for 20 minutes max. Only these short-lived tokens ever cross the wire — over TLS.
-3. Requests go through a thin same-origin proxy (`/api/asc/*`) that exists only because Apple blocks CORS. It forwards your short-lived token verbatim, stores nothing, logs nothing.
-4. Strict security headers (HSTS, nosniff, frame-ancestors none, no-referrer).
-5. The code is right here — audit it.
+- **Apple:** targets snap to official price points. Subscription preservation is
+  explicitly requested only for eligible increases. Effective changes are
+  corrected through the schedules Apple permits; completed billing is not
+  reversible.
+- **Google Play:** current storefront grids can be restored from any retained
+  snapshot. Subscription legacy cohorts remain separate from the current price
+  used for new purchases.
 
-## Getting started
+## Credential model
+
+Apple `.p8` and Google service-account keys are imported as non-extractable
+WebCrypto keys in IndexedDB. Their raw material is not uploaded to StoreOps.
+Short-lived store tokens pass through narrow same-origin proxies because the
+store APIs block browser CORS.
+
+Non-extractable does not mean page compromise is harmless: code executing in
+the application context could request signatures. CSP, dependency hygiene,
+least-privilege store roles, and revocable keys remain part of the threat model.
+
+## Paid-write authorization
+
+- Clerk account plans are checked on the server for every store mutation.
+- Legacy Lemon Squeezy license customers receive a signed 24-hour write proof
+  after license validation, so existing buyers continue to work without an API
+  validation for every territory.
+- Read operations and Google `convertRegionPrices` previews stay available to
+  free users.
+
+## Local development
 
 ```bash
 npm install
 npm run dev
 ```
 
-Then open http://localhost:3000 and connect with your App Store Connect API key
-(App Store Connect → Users and Access → Integrations → App Store Connect API — the **App Manager** role is enough).
+Copy `.env.example` and configure Clerk, Neon, Lemon Squeezy, and store checkout
+URLs as needed. The Clerk publishable and secret keys must come from the same
+instance and environment. For an explicitly unlicensed local install only, set:
 
-## Status / Roadmap
+```bash
+STOREOPS_ALLOW_UNLICENSED_WRITES=true
+```
 
-- [x] Connect with ASC API key (browser-only key storage)
-- [x] Apps list
-- [x] Metadata bulk editor — description, keywords, promo text, What's New across all locales, "apply to all", char counters, per-locale save log
-- [x] Pricing matrix — set base price, preview all ~175 territories (dry run), override individual countries, one-click apply (`appPriceSchedules`)
-- [x] **Controlled pricing policy** — create a bounded, deterministic regional adjustment from current localized prices, snap to valid store price points, then review the diff before applying. StoreOps never lets an AI invent a production price.
-- [x] **Subscription pricing** — list all subscriptions, import strict price sheets, snap to valid Apple subscription tiers, and explicitly request existing-subscriber preservation for eligible increases.
-- [x] **Snapshots & corrective changes** — automatic snapshot before every apply; restore creates a new corrective schedule. Effective subscription decreases cannot be undone retroactively.
-- [x] **Pro licensing (Lemon Squeezy)** — free tier: browse/preview/export; Pro: all writes. No accounts, no database — buy → license key → activate. Set `NEXT_PUBLIC_LS_CHECKOUT_URL` (see `.env.example`)
-- [ ] MCP server — let AI agents drive StoreOps directly (list apps, read prices, apply sheets)
-- [ ] App name / subtitle editing (`appInfoLocalizations`)
-- [ ] Subscription pricing per territory (`subscriptionPrices`) with preserve-existing-subscribers handling
-- [ ] Scheduled price changes (startDate support)
-- [ ] Encrypt key at rest with a passphrase (AES-GCM)
-- [ ] CSV / spreadsheet import-export for translations
+Never enable that flag in production.
+
+## Launch checklist
+
+Set production environment variables in the deployment platform, then run:
+
+```bash
+npm run launch:check
+npm test
+npm run lint
+npm run build
+```
+
+In Lemon Squeezy, send production webhooks to
+`https://www.storeops.dev/api/webhooks/lemonsqueezy` and use the same signing
+secret as `LEMONSQUEEZY_WEBHOOK_SECRET`. Enable `order_created`,
+`order_refunded`, `subscription_created`, `subscription_updated`,
+`subscription_cancelled`, `subscription_resumed`, and
+`subscription_expired`, `subscription_paused`, and `subscription_unpaused`.
+Apply the database migrations before accepting the first purchase.
+
+## Database
+
+```bash
+npm run db:generate
+npm run db:push
+```
+
+The database contains account plans, billing entitlements, usage events, and
+pricing snapshots. Store credentials are not stored in the database.
+
+## Quality gates
+
+```bash
+npm test
+npm run lint
+npm run build
+```
 
 ## Stack
 
-Next.js (App Router) · TypeScript · Tailwind · jose (JWT) · zustand
+Next.js · React · TypeScript · Tailwind CSS · Clerk · Neon/Drizzle · Lemon
+Squeezy · WebCrypto · Vitest

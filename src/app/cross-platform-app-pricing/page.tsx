@@ -78,14 +78,14 @@ export default function CrossPlatformPricingPage() {
                 "Current prices for every App Store territory (175) and Play region — two CSVs, same format.",
             },
             {
-              step: "One AI strategy for both",
+              step: "One controlled strategy for both",
               detail:
-                "Pick the objective once — PPP, growth, max revenue, retention, enterprise. StoreOps generates a store-aware prompt for each platform.",
+                "Pick a bounded policy for each product. Apple and Google use their own official baselines while StoreOps keeps the market intent consistent.",
             },
             {
               step: "Apply with previews on both sides",
               detail:
-                "Apple prices snap to valid tiers and restore at Apple’s earliest permitted date. Google prices apply exactly and can return to any saved storefront pricing snapshot.",
+                "Apple prices snap to official points and corrective changes follow Apple’s schedule. Google prices are verified after apply and can return to a saved current storefront grid.",
             },
           ].map((s, i) => (
             <li key={s.step} className="flex gap-4">
@@ -105,9 +105,9 @@ export default function CrossPlatformPricingPage() {
         <h2 className="text-2xl font-bold mb-4">Same privacy model on both stores</h2>
         <p className="text-zinc-400 leading-relaxed">
           Your App Store Connect .p8 and your Google service-account key are
-          both imported as non-extractable browser keys. They sign short-lived
-          tokens locally and physically cannot be read back — by anyone,
-          including StoreOps. No credential ever touches our servers.
+          both imported as non-extractable browser keys. Their raw key material
+          is not exportable after import; they sign short-lived tokens locally.
+          Store credentials are not uploaded to StoreOps.
         </p>
       </section>
 

@@ -8,6 +8,7 @@ import { AppTabs } from "@/components/AppTabs";
 import { PaywallModal, estimateManualMinutes } from "@/components/Paywall";
 import { TopBar } from "@/components/TopBar";
 import { useIsPro } from "@/lib/license";
+import { useHydrated } from "@/lib/use-hydrated";
 import {
   VERSION_FIELDS,
   type AppStoreVersion,
@@ -43,11 +44,9 @@ export default function MetadataEditorPage() {
   } | null>(null);
   const [saveLog, setSaveLog] = useState<string[]>([]);
   const [error, setError] = useState("");
-  const [hydrated, setHydrated] = useState(false);
+  const hydrated = useHydrated();
   const isPro = useIsPro();
   const [paywallOpen, setPaywallOpen] = useState(false);
-
-  useEffect(() => setHydrated(true), []);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -69,8 +68,10 @@ export default function MetadataEditorPage() {
 
   useEffect(() => {
     if (!credentials || !selectedVersion) return;
-    setLocs(null);
-    setDraft({});
+    queueMicrotask(() => {
+      setLocs(null);
+      setDraft({});
+    });
     ascFetchAll<VersionLocalization>(
       credentials,
       `/v1/appStoreVersions/${selectedVersion.id}/appStoreVersionLocalizations`

@@ -6,15 +6,14 @@ interface Props {
   open: boolean;
   defaultName?: string;
   onSaveAndApply: (name: string) => void;
-  onSkipAndApply: () => void;
   onCancel: () => void;
 }
 
-export function SnapshotConfirmDialog({ open, defaultName = "", onSaveAndApply, onSkipAndApply, onCancel }: Props) {
+export function SnapshotConfirmDialog({ open, defaultName = "", onSaveAndApply, onCancel }: Props) {
   const [name, setName] = useState(defaultName);
 
   useEffect(() => {
-    if (open) setName(defaultName);
+    if (open) queueMicrotask(() => setName(defaultName));
   }, [open, defaultName]);
 
   if (!open) return null;
@@ -54,12 +53,10 @@ export function SnapshotConfirmDialog({ open, defaultName = "", onSaveAndApply, 
             <span>✓</span> Save snapshot &amp; apply
             <span className="ml-auto text-xs font-normal bg-emerald-800 text-emerald-300 px-1.5 py-0.5 rounded">Recommended</span>
           </button>
-          <button
-            onClick={onSkipAndApply}
-            className="w-full rounded-lg border border-zinc-700 hover:border-zinc-500 px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 transition"
-          >
-            Skip &amp; apply anyway
-          </button>
+          <p className="text-center text-[11px] leading-relaxed text-zinc-500">
+            Pricing writes require a confirmed restore point. If it cannot be
+            saved, StoreOps will stop before contacting the store.
+          </p>
         </div>
       </div>
     </div>

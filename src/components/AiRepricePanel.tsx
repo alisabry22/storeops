@@ -10,8 +10,8 @@ interface Props {
   platform: "ios" | "android";
   strategy: PricingStrategy;
   onStrategyChange: (s: PricingStrategy) => void;
-  /** Called with the raw CSV string the AI returned. Caller handles preview. */
-  onResult: (csv: string) => void;
+  /** Called with deterministic CSV and the cap that must survive store snapping. */
+  onResult: (csv: string, maxChangePercent: number) => void;
   disabled?: boolean;
   /** Show the "Export CSV" button */
   onExportCsv?: () => void;
@@ -54,7 +54,10 @@ export function AiRepricePanel({
   }
 
   function handleGenerate() {
-    onResult(generateControlledPriceCsv(getCsv(), { strategy, maxChangePercent }));
+    onResult(
+      generateControlledPriceCsv(getCsv(), { strategy, maxChangePercent }),
+      maxChangePercent
+    );
   }
 
   return (
@@ -123,7 +126,7 @@ export function AiRepricePanel({
           <span className="text-[11px] text-zinc-500">Uses current localized store prices as the anchor.</span>
         </div>
         <p className="mt-2 text-[11px] leading-relaxed text-zinc-500">
-          This is deterministic and bounded—not an AI prediction of demand. It uses the current {platform === "ios" ? "App Store" : "Google Play"} localized prices as its source; unknown markets remain unchanged and every result still requires review.
+          This is deterministic and bounded—not an AI prediction of demand. It uses the current {platform === "ios" ? "App Store" : "Google Play"} localized prices as its source, assigns markets to explicit value/mid/standard bands, and requires review before apply.
         </p>
       </div>
 

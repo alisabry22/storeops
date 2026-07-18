@@ -9,6 +9,7 @@ import "./globals.css";
 
 // Accounts are opt-in by env: without Clerk keys the app runs local-only.
 const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+const analyticsEnabled = process.env.VERCEL === "1";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -33,6 +34,9 @@ export const metadata: Metadata = {
     "bulk update app store metadata",
     "app store connect api tool",
     "subscription pricing per country",
+    "google play bulk pricing",
+    "app pricing rollback",
+    "regional app pricing",
     "indie ios developer tools",
   ],
   alternates: { canonical: "/" },
@@ -69,7 +73,7 @@ const jsonLd = {
     {
       "@type": "Offer",
       name: "Pro",
-      price: "49.99",
+      price: (process.env.NEXT_PUBLIC_YEARLY_PRICE ?? "$49.99").replace(/[^0-9.]/g, ""),
       priceCurrency: "USD",
     },
   ],
@@ -93,7 +97,7 @@ export default function RootLayout({
         <KeyMigrator />
         {clerkEnabled && <AccountSync />}
         {children}
-        <Analytics />
+        {analyticsEnabled && <Analytics />}
       </body>
     </html>
   );

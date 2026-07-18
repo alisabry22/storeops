@@ -24,7 +24,7 @@ const faqSchema = {
       name: "Can I change App Store prices in bulk?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "Yes. StoreOps uses the App Store Connect API to let you set prices across all 175 storefronts at once. Export your current prices as CSV, adjust with AI, paste back, and apply — one operation updates every territory.",
+        text: "Yes. StoreOps uses the App Store Connect API to read all storefronts, produce a bounded and tier-valid preview, and apply the reviewed pricing schedule without country-by-country console work.",
       },
     },
     {
@@ -40,7 +40,7 @@ const faqSchema = {
       name: "Does StoreOps store my App Store Connect key?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "No. Your .p8 key is imported as a non-extractable WebCrypto key stored only in your browser's IndexedDB. It signs short-lived tokens locally and can never be read back — not even by StoreOps code.",
+        text: "No. Your .p8 key is imported as a non-extractable WebCrypto key in your browser's IndexedDB. Its raw material cannot be exported after import; it signs short-lived tokens locally and is not uploaded to StoreOps.",
       },
     },
     {
@@ -99,7 +99,7 @@ export default function BulkPricingPage() {
             },
             {
               step: "2",
-              title: "Reprice with AI",
+              title: "Configure a controlled policy",
               body: 'Copy the built-in AI prompt, paste it with your CSV into ChatGPT or Claude, get back a PPP-adjusted price sheet in seconds. The prompt asks for local purchasing power pricing — "99¢ in the US" becomes "12 EGP in Egypt" automatically.',
             },
             {

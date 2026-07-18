@@ -59,7 +59,13 @@ export function parsePriceSheet(
     }
 
     const rawPrice = parts[priceColumn] ?? "";
-    const price = Number(rawPrice.replace(/[^0-9.\-]/g, ""));
+    if (!/^\d+(?:\.\d{1,6})?$/.test(rawPrice)) {
+      warnings.push(
+        `Line ${i + 1}: ${territory} price must be a plain positive decimal with no symbols or thousands separators — skipped`
+      );
+      return;
+    }
+    const price = Number(rawPrice);
 
     if (!Number.isFinite(price) || price <= 0) {
       warnings.push(`Line ${i + 1}: ${territory} has no valid price — skipped`);
@@ -112,14 +118,4 @@ export function buildCsv(
     .map((r) => `${r.territoryId},${r.currency},${r.customerPrice}`)
     .join("\n");
   return `${header}\n${body}`;
-}
-
-export function buildAiPrompt(csv: string): string {
-  return `I'm pricing my iOS app across App Store territories. Below are my current prices as CSV (territory = ISO 3166-1 alpha-3 code, price = local currency).
-
-Adjust the prices for local purchasing power (PPP) so the app is fairly priced in every market — e.g. cheaper in emerging markets, standard in US/EU. Keep psychological pricing (x.99 or local equivalent).
-
-Reply ONLY with a CSV in the exact same format (territory,currency,price). Include every territory you want changed; omitted territories keep their current price.
-
-${csv}`;
 }

@@ -16,6 +16,7 @@ export interface SnapshotRow {
 }
 
 export interface PriceSnapshot {
+  schemaVersion?: 1;
   id: string;
   createdAt: string; // ISO
   appId: string;
@@ -23,6 +24,7 @@ export interface PriceSnapshot {
   scope: string;
   label: string;
   baseTerritory?: string;
+  platform?: "appstore" | "googleplay";
   rows: SnapshotRow[];
 }
 
@@ -30,7 +32,7 @@ const KEY = "storeops.snapshots.v1";
 // A regional grid is compact enough to retain useful pricing history while
 // still fitting comfortably in the browser fallback store. Signed-in users
 // also receive best-effort server sync.
-const MAX_PER_SCOPE = 25;
+export const MAX_SNAPSHOTS_PER_SCOPE = 25;
 
 function readAll(): PriceSnapshot[] {
   if (typeof window === "undefined") return [];
@@ -43,7 +45,7 @@ function readAll(): PriceSnapshot[] {
   }
 }
 
-function writeAll(snapshots: PriceSnapshot[]) {
+function writeAll(snapshots: PriceSnapshot[]): void {
   try {
     localStorage.setItem(KEY, JSON.stringify(snapshots));
   } catch {
@@ -51,7 +53,9 @@ function writeAll(snapshots: PriceSnapshot[]) {
     try {
       localStorage.setItem(KEY, JSON.stringify(snapshots.slice(0, Math.ceil(snapshots.length / 2))));
     } catch {
-      // give up silently; snapshots are best-effort
+      throw new Error(
+        "StoreOps could not save the safety snapshot in this browser. No store write was started. Free storage or enable browser storage, then try again."
+      );
     }
   }
 }
@@ -65,7 +69,13 @@ export function takeSnapshot(
 ): PriceSnapshot {
   const snapshot: PriceSnapshot = {
     ...input,
-    id: `snap_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+    schemaVersion: 1,
+    platform: input.platform ?? (input.scope.startsWith("gp:") ? "googleplay" : "appstore"),
+    id: `snap_${
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`
+    }`,
     createdAt: new Date().toISOString(),
   };
   const all = readAll();
@@ -76,9 +86,51 @@ export function takeSnapshot(
     (s) => !(s.appId === input.appId && s.scope === input.scope)
   );
   // newest first, cap per scope
-  const kept = [snapshot, ...sameScope].slice(0, MAX_PER_SCOPE);
+  const kept = [snapshot, ...sameScope].slice(0, MAX_SNAPSHOTS_PER_SCOPE);
   writeAll([...kept, ...others]);
-  pushSnapshotToServer(snapshot);
+  void pushSnapshotToServer(snapshot);
+  return snapshot;
+}
+
+/**
+ * Revenue-affecting writes use this stricter path. The browser copy is saved
+ * first; when StoreOps accounts are configured, the cloud copy must also be
+ * confirmed before the store mutation may begin.
+ */
+export async function takeRequiredSnapshot(
+  input: Omit<PriceSnapshot, "id" | "createdAt">
+): Promise<PriceSnapshot> {
+  const snapshot: PriceSnapshot = {
+    ...input,
+    schemaVersion: 1,
+    platform:
+      input.platform ??
+      (input.scope.startsWith("gp:") ? "googleplay" : "appstore"),
+    id: `snap_${
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`
+    }`,
+    createdAt: new Date().toISOString(),
+  };
+  const all = readAll();
+  const sameScope = all.filter(
+    (item) => item.appId === input.appId && item.scope === input.scope
+  );
+  const others = all.filter(
+    (item) => !(item.appId === input.appId && item.scope === input.scope)
+  );
+  writeAll([
+    [snapshot, ...sameScope].slice(0, MAX_SNAPSHOTS_PER_SCOPE),
+    others,
+  ].flat());
+
+  const result = await pushSnapshotToServer(snapshot);
+  if (result.cloudExpected && result.status !== "synced") {
+    throw new Error(
+      `The safety snapshot was saved on this device, but StoreOps could not confirm its cloud copy. No store write was started. Retry when account sync is available. ${result.error ?? ""}`.trim()
+    );
+  }
   return snapshot;
 }
 
@@ -110,4 +162,53 @@ export function exportSnapshot(snapshot: PriceSnapshot) {
   a.download = `snapshot-${slug}-${snapshot.createdAt.slice(0, 10)}.json`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+/** Import an exported restore point into the currently selected workspace. */
+export function importSnapshot(
+  json: string,
+  expected: { appId: string; scope: string }
+): PriceSnapshot {
+  let value: unknown;
+  try {
+    value = JSON.parse(json);
+  } catch {
+    throw new Error("That file is not valid snapshot JSON.");
+  }
+  if (!value || typeof value !== "object") {
+    throw new Error("That file does not contain a StoreOps snapshot.");
+  }
+  const parsed = value as Partial<PriceSnapshot>;
+  if (parsed.appId !== expected.appId || parsed.scope !== expected.scope) {
+    throw new Error(
+      "This snapshot belongs to a different app or pricing workspace. Select its original product before importing it."
+    );
+  }
+  if (
+    typeof parsed.label !== "string" ||
+    parsed.label.length === 0 ||
+    !Array.isArray(parsed.rows) ||
+    parsed.rows.length === 0 ||
+    parsed.rows.length > 1000
+  ) {
+    throw new Error("That snapshot is missing required pricing data.");
+  }
+  const validRows = parsed.rows.every(
+    (row) =>
+      row &&
+      typeof row.territoryId === "string" &&
+      typeof row.pricePointId === "string" &&
+      typeof row.customerPrice === "string" &&
+      typeof row.currency === "string"
+  );
+  if (!validRows) throw new Error("That snapshot contains invalid price rows.");
+
+  return takeSnapshot({
+    appId: expected.appId,
+    scope: expected.scope,
+    label: `Imported · ${parsed.label}`.slice(0, 120),
+    baseTerritory: parsed.baseTerritory,
+    platform: parsed.platform,
+    rows: parsed.rows,
+  });
 }

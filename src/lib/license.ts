@@ -8,6 +8,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { useAccount } from "./account";
+import { withCheckoutIdentity } from "./checkout";
 
 export const CHECKOUT_URL =
   process.env.NEXT_PUBLIC_LS_CHECKOUT_URL ??
@@ -18,9 +19,9 @@ export const CHECKOUT_URL =
 // never advertise a product that can't be bought.
 export const LIFETIME_CHECKOUT_URL =
   process.env.NEXT_PUBLIC_LS_LIFETIME_CHECKOUT_URL ?? "";
-export const LIFETIME_PRICE = "$79";
-export const LIFETIME_FULL_PRICE = "$129";
-export const YEARLY_PRICE = "$49.99";
+export const LIFETIME_PRICE = process.env.NEXT_PUBLIC_LIFETIME_PRICE ?? "$79";
+export const LIFETIME_FULL_PRICE = process.env.NEXT_PUBLIC_LIFETIME_FULL_PRICE ?? "$129";
+export const YEARLY_PRICE = process.env.NEXT_PUBLIC_YEARLY_PRICE ?? "$49.99";
 
 interface LicenseState {
   licenseKey: string | null;
@@ -29,6 +30,9 @@ interface LicenseState {
   status: "none" | "active" | "invalid";
   /** ISO date of last successful validation */
   lastValidated: string | null;
+  /** Short-lived server-signed proof used to authorize store writes. */
+  writeToken: string | null;
+  writeTokenExpiresAt: string | null;
   activate: (key: string) => Promise<{ ok: boolean; error?: string }>;
   revalidate: () => Promise<void>;
   deactivate: () => Promise<void>;
@@ -42,6 +46,8 @@ async function lsCall(body: Record<string, string>): Promise<{
     error?: string;
     instance?: { id: string };
     meta?: { product_name?: string };
+    write_token?: string;
+    write_token_expires_at?: string;
   };
 }> {
   const res = await fetch("/api/license", {
@@ -66,6 +72,8 @@ export const useLicense = create<LicenseState>()(
       productName: null,
       status: "none",
       lastValidated: null,
+      writeToken: null,
+      writeTokenExpiresAt: null,
 
       activate: async (key: string) => {
         const trimmed = key.trim();
@@ -83,6 +91,8 @@ export const useLicense = create<LicenseState>()(
               productName: json.meta?.product_name ?? "StoreOps Pro",
               status: "active",
               lastValidated: new Date().toISOString(),
+              writeToken: json.write_token ?? null,
+              writeTokenExpiresAt: json.write_token_expires_at ?? null,
             });
             return { ok: true };
           }
@@ -96,10 +106,19 @@ export const useLicense = create<LicenseState>()(
       },
 
       revalidate: async () => {
-        const { licenseKey, instanceId, lastValidated } = get();
+        const {
+          licenseKey,
+          instanceId,
+          lastValidated,
+          writeToken,
+          writeTokenExpiresAt,
+        } = get();
         if (!licenseKey || !instanceId) return;
         // At most once a day; stay quiet otherwise
         if (
+          writeToken &&
+          writeTokenExpiresAt &&
+          new Date(writeTokenExpiresAt).getTime() - Date.now() > 5 * 60 * 1000 &&
           lastValidated &&
           Date.now() - new Date(lastValidated).getTime() < 24 * 60 * 60 * 1000
         )
@@ -111,7 +130,12 @@ export const useLicense = create<LicenseState>()(
             instance_id: instanceId,
           });
           if (json.valid === true) {
-            set({ status: "active", lastValidated: new Date().toISOString() });
+            set({
+              status: "active",
+              lastValidated: new Date().toISOString(),
+              writeToken: json.write_token ?? null,
+              writeTokenExpiresAt: json.write_token_expires_at ?? null,
+            });
           } else if (json.valid === false) {
             set({ status: "invalid" });
           }
@@ -140,6 +164,8 @@ export const useLicense = create<LicenseState>()(
           productName: null,
           status: "none",
           lastValidated: null,
+          writeToken: null,
+          writeTokenExpiresAt: null,
         });
       },
     }),
@@ -152,16 +178,15 @@ export const useLicense = create<LicenseState>()(
  * purchase webhook can match it to the account — no license key entry needed.
  */
 export function withCheckoutEmail(url: string, email: string | null): string {
-  if (!url || !email) return url;
-  const sep = url.includes("?") ? "&" : "?";
-  return `${url}${sep}checkout[email]=${encodeURIComponent(email)}`;
+  return withCheckoutIdentity(url, email, null);
 }
 
 export function useCheckoutUrls(): { yearly: string; lifetime: string } {
   const email = useAccount((s) => s.email);
+  const userId = useAccount((s) => s.userId);
   return {
-    yearly: withCheckoutEmail(CHECKOUT_URL, email),
-    lifetime: withCheckoutEmail(LIFETIME_CHECKOUT_URL, email),
+    yearly: withCheckoutIdentity(CHECKOUT_URL, email, userId),
+    lifetime: withCheckoutIdentity(LIFETIME_CHECKOUT_URL, email, userId),
   };
 }
 
@@ -170,4 +195,23 @@ export function useIsPro(): boolean {
   const deviceLicense = useLicense((s) => s.status === "active");
   const accountPro = useAccount((s) => s.plan === "pro" || s.plan === "lifetime");
   return deviceLicense || accountPro;
+}
+
+/**
+ * Existing paid license users are transparently revalidated once when they
+ * first write after upgrading to server-side authorization.
+ */
+export async function getLegacyWriteHeaders(): Promise<Record<string, string>> {
+  let state = useLicense.getState();
+  if (state.status !== "active") return {};
+  const expiresSoon =
+    !state.writeTokenExpiresAt ||
+    new Date(state.writeTokenExpiresAt).getTime() - Date.now() < 5 * 60 * 1000;
+  if (!state.writeToken || expiresSoon) {
+    await state.revalidate();
+    state = useLicense.getState();
+  }
+  return state.writeToken
+    ? { "X-StoreOps-License-Proof": state.writeToken }
+    : {};
 }

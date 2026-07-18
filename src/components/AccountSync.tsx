@@ -24,6 +24,21 @@ export function AccountSync() {
     else reset();
   }, [isLoaded, isSignedIn, fetchMe, reset]);
 
+  // Checkout opens in a new tab. Refresh entitlement state when the buyer
+  // returns so a completed purchase unlocks writes without a manual reload.
+  useEffect(() => {
+    if (!isSignedIn) return;
+    const refresh = () => {
+      if (document.visibilityState === "visible") void fetchMe(true);
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [isSignedIn, fetchMe]);
+
   // Auto-claim: signed in + free account + active device license → attach key
   useEffect(() => {
     if (!isSignedIn || !loaded || plan !== "free") return;

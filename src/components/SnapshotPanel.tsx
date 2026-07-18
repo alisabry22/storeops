@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import {
   deleteSnapshot,
   exportSnapshot,
   formatSnapshotDate,
+  importSnapshot,
   listSnapshots,
+  MAX_SNAPSHOTS_PER_SCOPE,
   type PriceSnapshot,
 } from "@/lib/snapshots";
 import { fetchServerSnapshots } from "@/lib/snapshot-sync";
@@ -35,10 +37,22 @@ export function SnapshotPanel({
   const [snapshots, setSnapshots] = useState<PriceSnapshot[]>([]);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [saveName, setSaveName] = useState("");
+  const [syncState, setSyncState] = useState<"synced" | "local-only" | null>(null);
+  const [importError, setImportError] = useState("");
+  const importInputId = useId();
+
+  useEffect(() => {
+    const handleSync = (event: Event) => {
+      const detail = (event as CustomEvent<{ status?: "synced" | "local-only" }>).detail;
+      if (detail?.status) setSyncState(detail.status);
+    };
+    window.addEventListener("storeops:snapshot-sync", handleSync);
+    return () => window.removeEventListener("storeops:snapshot-sync", handleSync);
+  }, []);
 
   useEffect(() => {
     const local = listSnapshots(appId, scope);
-    setSnapshots(local);
+    queueMicrotask(() => setSnapshots(local));
     // Merge in account-synced snapshots (other devices / cleared cache)
     let cancelled = false;
     fetchServerSnapshots(appId, scope).then((server) => {
@@ -67,6 +81,11 @@ export function SnapshotPanel({
       <div className="flex items-center gap-2 mb-1">
         <h3 className="text-sm font-semibold">Pricing history</h3>
         {platform === "google" && <span className="rounded-full border border-emerald-800 bg-emerald-950/50 px-2 py-0.5 text-[10px] font-medium text-emerald-300">Reusable restore points</span>}
+        {syncState && (
+          <span className={`text-[10px] ${syncState === "synced" ? "text-emerald-400" : "text-zinc-500"}`}>
+            {syncState === "synced" ? "Cloud confirmed" : "Saved on this device"}
+          </span>
+        )}
       </div>
       <p className="text-xs text-zinc-500 mb-3">
         {platform === "google"
@@ -75,7 +94,7 @@ export function SnapshotPanel({
       </p>
 
       {onSave && (
-        <div className="flex gap-2 mb-3">
+        <div className="flex flex-wrap gap-2 mb-3">
           <input
             value={saveName}
             onChange={(e) => setSaveName(e.target.value)}
@@ -90,7 +109,39 @@ export function SnapshotPanel({
           >
             Save
           </button>
+          <input
+            id={importInputId}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={async (event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (!file) return;
+              setImportError("");
+              try {
+                importSnapshot(await file.text(), { appId, scope });
+                setSnapshots(listSnapshots(appId, scope));
+              } catch (error) {
+                setImportError(
+                  error instanceof Error ? error.message : "Could not import snapshot."
+                );
+              }
+            }}
+          />
+          <button
+            onClick={() => document.getElementById(importInputId)?.click()}
+            className="text-xs rounded-md border border-zinc-700 px-3 py-1.5 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200 transition"
+          >
+            Import JSON
+          </button>
         </div>
+      )}
+
+      {importError && (
+        <p className="mb-3 rounded-md border border-red-900 bg-red-950/30 px-3 py-2 text-xs text-red-300">
+          {importError}
+        </p>
       )}
 
       {snapshots.length === 0 ? (
@@ -163,6 +214,10 @@ export function SnapshotPanel({
           ))}
         </div>
       )}
+      <p className="mt-2 text-[10px] text-zinc-600">
+        Up to {MAX_SNAPSHOTS_PER_SCOPE} restore points are retained per pricing
+        workspace; saving another replaces the oldest point.
+      </p>
     </div>
   );
 }

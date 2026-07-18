@@ -7,6 +7,7 @@
  * sees the service-account key, stores nothing, logs nothing.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { canWriteToStores } from "@/lib/server/write-access";
 
 const GP_BASE = "https://androidpublisher.googleapis.com";
 const ALLOWED_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
@@ -19,7 +20,7 @@ async function handler(
     return NextResponse.json({ error: "Method not allowed" }, { status: 405 });
   }
 
-  const auth = req.headers.get("authorization");
+  const auth = req.headers.get("x-store-authorization");
   if (!auth?.startsWith("Bearer ")) {
     return NextResponse.json(
       { error: "Missing Authorization header" },
@@ -28,7 +29,23 @@ async function handler(
   }
 
   const { path } = await params;
-  const url = new URL(`${GP_BASE}/${path.join("/")}`);
+  if (path[0] !== "androidpublisher" || path[1] !== "v3" || path[2] !== "applications") {
+    return NextResponse.json({ error: "Unsupported Google Play API path" }, { status: 400 });
+  }
+  const joinedPath = path.join("/");
+  const readLikePost =
+    req.method === "POST" &&
+    (joinedPath.endsWith("/pricing:convertRegionPrices") ||
+      joinedPath.endsWith("/oneTimeProducts:batchGet") ||
+      joinedPath.endsWith("/subscriptions:batchGet"));
+  if (req.method !== "GET" && !readLikePost && !(await canWriteToStores(req))) {
+    return NextResponse.json(
+      { error: "A StoreOps Pro or Lifetime entitlement is required for store writes." },
+      { status: 403 }
+    );
+  }
+
+  const url = new URL(`${GP_BASE}/${joinedPath}`);
   req.nextUrl.searchParams.forEach((value, key) => {
     url.searchParams.set(key, value);
   });

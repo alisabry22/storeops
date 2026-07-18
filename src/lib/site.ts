@@ -1,9 +1,9 @@
 /** Canonical site config — single source of truth for SEO surfaces. */
 export const SITE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL ?? "https://storeops.dev";
+  process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.storeops.dev";
 
 export const SITE_NAME = "StoreOps";
 export const SITE_TITLE =
-  "StoreOps — App Store Connect Bulk Editor for Indie Devs";
+  "StoreOps — Verified App Store & Google Play Pricing Operations";
 export const SITE_DESCRIPTION =
-  "Bulk-edit App Store metadata, pricing, and subscriptions across all 175 storefronts. Controlled pricing policies, dry-run previews, and corrective-change snapshots. Your API key never leaves the browser.";
+  "Preview, apply, verify, and recover worldwide App Store and Google Play pricing without editing storefronts one by one. Includes subscriptions, IAPs, metadata, and controlled regional policies.";

@@ -63,8 +63,8 @@ export default function PlayConsolePricingPage() {
       </h1>
       <p className="text-lg text-zinc-400 leading-relaxed mb-10">
         Repricing an app across Google Play&apos;s regions means dozens of manual
-        edits in Play Console — per product. StoreOps turns it into one CSV
-        round-trip with a diff preview and automatic snapshots.
+        edits in Play Console — per product. StoreOps turns it into one
+        anchored or bounded preview with automatic snapshots.
       </p>
 
       <section className="mb-12">
@@ -82,9 +82,9 @@ export default function PlayConsolePricingPage() {
                 "Each base plan holds a regional price config per country. StoreOps updates the full set in one PATCH. New subscribers get the new price; existing ones are untouched.",
             },
             {
-              type: "AI-suggested local pricing",
+              type: "Controlled local pricing",
               description:
-                "Five objectives — PPP fairness, growth, max revenue, retention, enterprise — each generating a prompt for any AI with your current prices attached. Paste the answer back and preview.",
+                "Five bounded policies — market access, growth, revenue, retention, and professional positioning. AI can translate your goal into policy settings, but deterministic code calculates every reviewed price.",
             },
           ].map((t) => (
             <div key={t.type} className="rounded-lg border border-zinc-800 p-5">

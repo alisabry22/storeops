@@ -9,13 +9,24 @@ import { PaywallModal, estimateManualMinutes } from "@/components/Paywall";
 import { SnapshotPanel } from "@/components/SnapshotPanel";
 import { TopBar } from "@/components/TopBar";
 import { useIsPro } from "@/lib/license";
-import { takeSnapshot, type PriceSnapshot } from "@/lib/snapshots";
+import { useHydrated } from "@/lib/use-hydrated";
+import {
+  takeRequiredSnapshot,
+  takeSnapshot,
+  type PriceSnapshot,
+} from "@/lib/snapshots";
 import { buildCsv, parsePriceSheet, snapToPricePoint } from "@/lib/pricing-import";
 import { STRATEGIES, type PricingStrategy } from "@/lib/pricing-strategies";
-import { pricingPolicyMultiplier, stagePriceTowardTarget } from "@/lib/pricing-policy";
+import {
+  findMovementCapViolations,
+  movementCapErrorMessage,
+  pricingPolicyMultiplier,
+  stagePriceTowardTarget,
+} from "@/lib/pricing-policy";
 import { AiRepricePanel } from "@/components/AiRepricePanel";
 import { SnapshotConfirmDialog } from "@/components/SnapshotConfirmDialog";
 import { ApplySuccessDialog } from "@/components/ApplySuccessDialog";
+import { verifyPricePointsWithRetry } from "@/lib/price-verification";
 import type {
   Subscription,
   SubscriptionGroup,
@@ -87,7 +98,7 @@ export default function SubscriptionsPage() {
   const { id } = useParams<{ id: string }>();
   const { credentials } = useCredentials();
 
-  const [hydrated, setHydrated] = useState(false);
+  const hydrated = useHydrated();
   const [loadingGroups, setLoadingGroups] = useState(true);
   const [loadingPrices, setLoadingPrices] = useState(false);
   const [error, setError] = useState("");
@@ -109,6 +120,7 @@ export default function SubscriptionsPage() {
     productLabel: string;
     regionsChanged: number;
     warnings: string[];
+    verified: boolean;
   } | null>(null);
   const [snapshotDialog, setSnapshotDialog] = useState(false);
   const [strategy, setStrategy] = useState<PricingStrategy>("ppp");
@@ -117,6 +129,7 @@ export default function SubscriptionsPage() {
   const [selectedAnchorPointId, setSelectedAnchorPointId] = useState("");
   const [anchorMaxChangePercent, setAnchorMaxChangePercent] = useState(25);
   const [applyFullAnchorTarget, setApplyFullAnchorTarget] = useState(false);
+  const [previewMovementCap, setPreviewMovementCap] = useState<number | null>(null);
   const [anchorLoading, setAnchorLoading] = useState(false);
   const [preserveExistingSubscribers, setPreserveExistingSubscribers] = useState(true);
   const [acknowledgedImpact, setAcknowledgedImpact] = useState(false);
@@ -125,8 +138,6 @@ export default function SubscriptionsPage() {
   const isPro = useIsPro();
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [snapRefresh, setSnapRefresh] = useState(0);
-
-  useEffect(() => setHydrated(true), []);
 
   useEffect(() => {
     if (!credentials || !hydrated) return;
@@ -140,10 +151,9 @@ export default function SubscriptionsPage() {
   // Load all subscription groups + subscriptions
   useEffect(() => {
     if (!credentials || !hydrated) return;
-    setLoadingGroups(true);
-    setError("");
-
-    (async () => {
+    queueMicrotask(() => void (async () => {
+      setLoadingGroups(true);
+      setError("");
       try {
         const { data: groups } = await ascFetchAllFull<SubscriptionGroup>(
           credentials,
@@ -169,7 +179,7 @@ export default function SubscriptionsPage() {
       } finally {
         setLoadingGroups(false);
       }
-    })();
+    })());
   }, [credentials, hydrated, id]);
 
   const loadPrices = useCallback(async (subId: string) => {
@@ -184,24 +194,68 @@ export default function SubscriptionsPage() {
       >(credentials, `/v1/subscriptions/${subId}/prices`, {
         include: "subscriptionPricePoint,territory",
       });
-      const rows = resolvePrices(data, included);
-      setCurrentPrices(rows.sort((a, b) => a.territoryId.localeCompare(b.territoryId)));
+      const rows = resolvePrices(data, included).sort((a, b) =>
+        a.territoryId.localeCompare(b.territoryId)
+      );
+      setCurrentPrices(rows);
+      return rows;
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      return null;
     } finally {
       setLoadingPrices(false);
     }
   }, [credentials]);
 
+  async function verifySubscriptionPricePoints(
+    expected: ReadonlyMap<string, string>
+  ) {
+    const mismatches = await verifyPricePointsWithRetry(expected, async () => {
+      const rows = await loadPrices(selectedSubId);
+      if (!rows) return null;
+      const latest = new Map<
+        string,
+        { pointId: string; startDate: string }
+      >();
+      for (const row of rows) {
+        const candidateDate = row.startDate ?? "";
+        const existing = latest.get(row.territoryId);
+        if (!existing || candidateDate >= existing.startDate) {
+          latest.set(row.territoryId, {
+            pointId: row.pricePointId,
+            startDate: candidateDate,
+          });
+        }
+      }
+      return new Map(
+        [...latest].map(([territoryId, value]) => [
+          territoryId,
+          value.pointId,
+        ])
+      );
+    });
+    if (mismatches.length > 0) {
+      throw new Error(
+        `Apple accepted one or more subscription changes, but live verification did not match for ${mismatches
+          .slice(0, 6)
+          .map((item) => item.territoryId)
+          .join(", ")}${mismatches.length > 6 ? "…" : ""}. Refresh and review current and upcoming prices before retrying.`
+      );
+    }
+  }
+
   useEffect(() => {
     if (selectedSubId) {
-      setAnchorPoints([]);
-      setSelectedAnchorPointId("");
-      setImportPreview(null);
-      setSheetText("");
-      setApplied(false);
-      setApplySummary(null);
-      loadPrices(selectedSubId);
+      queueMicrotask(() => {
+        setAnchorPoints([]);
+        setSelectedAnchorPointId("");
+        setImportPreview(null);
+        setSheetText("");
+        setPreviewMovementCap(null);
+        setApplied(false);
+        setApplySummary(null);
+        void loadPrices(selectedSubId);
+      });
     }
   }, [selectedSubId, loadPrices]);
 
@@ -393,7 +447,7 @@ export default function SubscriptionsPage() {
         const equalizedPrice = Number(point.attributes.customerPrice);
         const finalTarget = equalizedPrice * pricingPolicyMultiplier(strategy, territoryId);
         const currentPrice = currentByTerritory.get(territoryId) ?? null;
-        const stagedTarget = territoryId === "USA" || applyFullAnchorTarget
+        const stagedTarget = applyFullAnchorTarget
           ? finalTarget
           : stagePriceTowardTarget(currentPrice, finalTarget, anchorMaxChangePercent);
         finalTargets.set(territoryId, finalTarget);
@@ -404,6 +458,9 @@ export default function SubscriptionsPage() {
         };
       });
       const csv = buildCsv(csvRows);
+      setPreviewMovementCap(
+        applyFullAnchorTarget ? null : anchorMaxChangePercent
+      );
       setSheetText(csv);
       await buildImportPreview(csv, finalTargets);
     } catch (previewError) {
@@ -516,9 +573,9 @@ export default function SubscriptionsPage() {
   }
 
   /** Save current active prices locally before any write — the undo button. */
-  function snapshotBeforeApply(label: string) {
-    if (activePrices.length === 0 || !selectedSubId) return;
-    takeSnapshot({
+  async function snapshotBeforeApply(label: string) {
+    if (!selectedSubId) throw new Error("Choose a subscription first.");
+    await takeRequiredSnapshot({
       appId: id,
       scope: `sub:${selectedSubId}`,
       label,
@@ -648,24 +705,45 @@ export default function SubscriptionsPage() {
     }
   }
 
-  async function applyImport(withSnapshot = true, snapshotName?: string) {
+  async function applyImport(snapshotName?: string) {
     if (!credentials || !importPreview || !selectedSubId) return;
     setSnapshotDialog(false);
     setError("");
     setApplying({ done: 0, total: importPreview.length });
     try {
-      if (withSnapshot) snapshotBeforeApply(snapshotName || `Before import · ${importPreview.length} territories`);
+      if (previewMovementCap !== null) {
+        const violations = findMovementCapViolations(
+          new Map(
+            activePrices.map((row) => [row.territoryId, Number(row.customerPrice)])
+          ),
+          new Map(
+            importPreview.map((row) => [row.territoryId, Number(row.snappedPrice)])
+          ),
+          previewMovementCap
+        );
+        if (violations.length > 0) {
+          throw new Error(
+            movementCapErrorMessage(violations, previewMovementCap)
+          );
+        }
+      }
+      await snapshotBeforeApply(
+        snapshotName || `Before import · ${importPreview.length} territories`
+      );
       await postPrices(importPreview);
+      await verifySubscriptionPricePoints(
+        new Map(importPreview.map((row) => [row.territoryId, row.pointId]))
+      );
       setApplySummary({
         productLabel:
           subscriptions.find((s) => s.id === selectedSubId)?.attributes.name ?? selectedSubId,
         regionsChanged: importPreview.length,
         warnings: importWarnings,
+        verified: true,
       });
       setApplied(true);
       setImportPreview(null);
       setSheetText("");
-      await loadPrices(selectedSubId);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       // A batch is not atomic: valid rows in the same batch may have reached
@@ -710,12 +788,12 @@ export default function SubscriptionsPage() {
     setError("");
     setApplying({ done: 0, total: snapshot.rows.length });
     try {
+      await snapshotBeforeApply(`Before restoring · ${snapshot.label}`);
       const activeByTerritory = new Map(activePrices.map((price) => [price.territoryId, price.customerPrice]));
-      const alreadyMatching = snapshot.rows.filter(
-        (row) => activeByTerritory.get(row.territoryId) === row.customerPrice
-      );
+      // Remove pending schedules across the whole restore scope first. Leaving
+      // a later pending change behind could silently undo the restored grid.
       const cancellation = await cancelPendingSnapshotMistakes(
-        new Set(alreadyMatching.map((row) => row.territoryId))
+        new Set(snapshot.rows.map((row) => row.territoryId))
       );
       const rowsToRestore = snapshot.rows.filter(
         (row) =>
@@ -730,6 +808,9 @@ export default function SubscriptionsPage() {
           snappedPrice: r.customerPrice,
         }))
       );
+      await verifySubscriptionPricePoints(
+        new Map(snapshot.rows.map((row) => [row.territoryId, row.pricePointId]))
+      );
       setApplySummary({
         productLabel:
           subscriptions.find((s) => s.id === selectedSubId)?.attributes.name ?? selectedSubId,
@@ -739,9 +820,9 @@ export default function SubscriptionsPage() {
           rowsToRestore.length > 0 ? `${rowsToRestore.length} previous storefront prices were scheduled at Apple's earliest permitted date.` : "",
           "Restoration returns the storefront grid; it cannot reverse billing that already occurred.",
         ].filter(Boolean),
+        verified: true,
       });
       setApplied(true);
-      await loadPrices(selectedSubId);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       await loadPrices(selectedSubId);
@@ -821,6 +902,7 @@ export default function SubscriptionsPage() {
           productLabel={applySummary.productLabel}
           regionsChanged={applySummary.regionsChanged}
           warnings={applySummary.warnings}
+          verified={applySummary.verified}
           onClose={() => setApplySummary(null)}
         />
       )}
@@ -875,7 +957,7 @@ export default function SubscriptionsPage() {
 
             {pricingMode === "anchor" ? (
               <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-4 mb-4">
-                <p className="text-sm font-medium text-zinc-200 mb-1">Anchor the worldwide grid to an exact USA price</p>
+                <p className="text-sm font-medium text-zinc-200 mb-1">Target a USA price and safely move the worldwide grid toward it</p>
                 <p className="text-xs text-zinc-500 mb-3">Apple equalizations form the baseline. Market policy adjusts that baseline; the movement cap only stages how far each current price moves this cycle.</p>
                 <div className="flex flex-wrap gap-3 items-end mb-3">
                   <label className="text-xs text-zinc-400">
@@ -912,14 +994,22 @@ export default function SubscriptionsPage() {
                 platform="ios"
                 strategy={strategy}
                 onStrategyChange={setStrategy}
-                onResult={async (csv) => { setSheetText(csv); await buildImportPreview(csv); }}
+                onResult={async (csv, cap) => {
+                  setPreviewMovementCap(cap);
+                  setSheetText(csv);
+                  await buildImportPreview(csv);
+                }}
                 disabled={activePrices.length === 0}
                 onExportCsv={exportCsv}
               />
             )}
             <textarea
               value={sheetText}
-              onChange={(e) => { setSheetText(e.target.value); setImportPreview(null); }}
+              onChange={(e) => {
+                setSheetText(e.target.value);
+                setImportPreview(null);
+                setPreviewMovementCap(null);
+              }}
               placeholder={"territory,price\nUSA,4.99\nEGY,49.99\nDEU,3.99"}
               rows={4}
               className="w-full rounded-md bg-zinc-950 border border-zinc-800 px-3 py-2 text-sm font-mono focus:border-emerald-500 focus:outline-none resize-y"
@@ -934,7 +1024,11 @@ export default function SubscriptionsPage() {
                   id="sub-csv-file"
                   onChange={async (e) => {
                     const f = e.target.files?.[0];
-                    if (f) { setSheetText(await f.text()); setImportPreview(null); }
+                    if (f) {
+                      setSheetText(await f.text());
+                      setImportPreview(null);
+                      setPreviewMovementCap(null);
+                    }
                   }}
                 />
                 <button
@@ -1138,8 +1232,7 @@ export default function SubscriptionsPage() {
       <SnapshotConfirmDialog
         open={snapshotDialog}
         defaultName={importPreview ? `Before import · ${importPreview.length} territories` : ""}
-        onSaveAndApply={(name) => applyImport(true, name)}
-        onSkipAndApply={() => applyImport(false)}
+        onSaveAndApply={(name) => applyImport(name)}
         onCancel={() => setSnapshotDialog(false)}
       />
       <PaywallModal

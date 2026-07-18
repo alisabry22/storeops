@@ -1,10 +1,11 @@
 interface UpdateStatusProps {
   title: string;
   detail: string;
+  events?: string[];
 }
 
 /** Visible confirmation that a bulk update request is still in flight. */
-export function UpdateStatus({ title, detail }: UpdateStatusProps) {
+export function UpdateStatus({ title, detail, events = [] }: UpdateStatusProps) {
   return (
     <div
       className="mb-4 flex items-center gap-3 rounded-md border border-emerald-800/70 bg-emerald-950/30 px-3 py-2.5"
@@ -18,6 +19,13 @@ export function UpdateStatus({ title, detail }: UpdateStatusProps) {
       <div className="text-sm">
         <p className="font-medium text-emerald-300">{title}</p>
         <p className="text-xs text-zinc-400">{detail}</p>
+        {events.length > 0 && (
+          <ul className="mt-2 space-y-1 text-xs text-zinc-500">
+            {events.slice(-4).map((event, index) => (
+              <li key={`${event}-${index}`}>• {event}</li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );

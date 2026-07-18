@@ -24,7 +24,7 @@ const faqSchema = {
       name: "How do I change App Store Connect pricing for all countries?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "In App Store Connect, you have to set prices per country manually. StoreOps automates this: export your current prices as CSV, reprice with AI, paste back, and apply to all 175 territories at once via the App Store Connect API.",
+        text: "StoreOps reads your App Store prices, builds a bounded policy preview, snaps every target to an official Apple price point, and applies only the reviewed storefront changes through the App Store Connect API.",
       },
     },
     {
@@ -120,7 +120,7 @@ export default function AppStoreConnectPricingPage() {
         </p>
         <p className="text-zinc-400 leading-relaxed">
           StoreOps is the missing bulk pricing layer for App Store Connect. Export your current
-          prices, reprice with AI for local purchasing power, import back, review the diff, and
+          prices, configure a controlled market policy, review the snapped storefront diff, and
           apply in one operation. Every change is snapshotted first so you can roll back in one
           click.
         </p>

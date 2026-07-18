@@ -9,13 +9,23 @@ import { PaywallModal, estimateManualMinutes } from "@/components/Paywall";
 import { SnapshotPanel } from "@/components/SnapshotPanel";
 import { TopBar } from "@/components/TopBar";
 import { useIsPro } from "@/lib/license";
-import { takeSnapshot, type PriceSnapshot } from "@/lib/snapshots";
+import { useHydrated } from "@/lib/use-hydrated";
+import {
+  takeRequiredSnapshot,
+  takeSnapshot,
+  type PriceSnapshot,
+} from "@/lib/snapshots";
 import { buildCsv, parsePriceSheet, snapToPricePoint } from "@/lib/pricing-import";
 import { type PricingStrategy } from "@/lib/pricing-strategies";
+import {
+  findMovementCapViolations,
+  movementCapErrorMessage,
+} from "@/lib/pricing-policy";
 import { AiRepricePanel } from "@/components/AiRepricePanel";
 import { SnapshotConfirmDialog } from "@/components/SnapshotConfirmDialog";
 import { ApplySuccessDialog } from "@/components/ApplySuccessDialog";
 import { UpdateStatus } from "@/components/UpdateStatus";
+import { verifyPricePointsWithRetry } from "@/lib/price-verification";
 import type {
   InAppPurchase,
   InAppPurchasePrice,
@@ -88,7 +98,7 @@ export default function IapPage() {
   const { id } = useParams<{ id: string }>();
   const { credentials } = useCredentials();
 
-  const [hydrated, setHydrated] = useState(false);
+  const hydrated = useHydrated();
   const [loadingIaps, setLoadingIaps] = useState(true);
   const [loadingPrices, setLoadingPrices] = useState(false);
   const [error, setError] = useState("");
@@ -110,16 +120,16 @@ export default function IapPage() {
     productLabel: string;
     regionsChanged: number;
     warnings: string[];
+    verified: boolean;
   } | null>(null);
   const [snapshotDialog, setSnapshotDialog] = useState(false);
   const [strategy, setStrategy] = useState<PricingStrategy>("ppp");
+  const [previewMovementCap, setPreviewMovementCap] = useState<number | null>(null);
 
   // Pro gate + snapshots
   const isPro = useIsPro();
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [snapRefresh, setSnapRefresh] = useState(0);
-
-  useEffect(() => setHydrated(true), []);
 
   useEffect(() => {
     if (!credentials || !hydrated) return;
@@ -133,8 +143,10 @@ export default function IapPage() {
   // Load all IAPs for this app
   useEffect(() => {
     if (!credentials || !hydrated) return;
-    setLoadingIaps(true);
-    setError("");
+    queueMicrotask(() => {
+      setLoadingIaps(true);
+      setError("");
+    });
 
     ascFetchAllFull<InAppPurchase>(credentials, `/v1/apps/${id}/inAppPurchasesV2`)
       .then(({ data }) => {
@@ -186,13 +198,19 @@ export default function IapPage() {
           ...manualRows,
           ...autoRows.filter((r) => !manualTerritories.has(r.territoryId)),
         ];
-        setCurrentPrices(merged.sort((a, b) => a.territoryId.localeCompare(b.territoryId)));
+        const loaded = merged.sort((a, b) =>
+          a.territoryId.localeCompare(b.territoryId)
+        );
+        setCurrentPrices(loaded);
+        return loaded;
       } catch (e) {
         if (e instanceof AscError && e.status === 404) {
           // No price schedule yet — IAP has never been priced
           setCurrentPrices([]);
+          return [];
         } else {
           setError(e instanceof Error ? e.message : String(e));
+          return null;
         }
       } finally {
         setLoadingPrices(false);
@@ -201,13 +219,35 @@ export default function IapPage() {
     [credentials]
   );
 
+  async function verifyIapPricePoints(
+    expected: ReadonlyMap<string, string>
+  ) {
+    const mismatches = await verifyPricePointsWithRetry(expected, async () => {
+      const rows = await loadPrices(selectedIapId);
+      return rows
+        ? new Map(rows.map((row) => [row.territoryId, row.pricePointId]))
+        : null;
+    });
+    if (mismatches.length > 0) {
+      throw new Error(
+        `Apple accepted the IAP schedule, but live verification did not match for ${mismatches
+          .slice(0, 6)
+          .map((item) => item.territoryId)
+          .join(", ")}${mismatches.length > 6 ? "…" : ""}. Refresh and review the live grid before retrying.`
+      );
+    }
+  }
+
   useEffect(() => {
     if (selectedIapId) {
-      setImportPreview(null);
-      setSheetText("");
-      setApplied(false);
-      setApplySummary(null);
-      loadPrices(selectedIapId);
+      queueMicrotask(() => {
+        setImportPreview(null);
+        setSheetText("");
+        setPreviewMovementCap(null);
+        setApplied(false);
+        setApplySummary(null);
+        void loadPrices(selectedIapId);
+      });
     }
   }, [selectedIapId, loadPrices]);
 
@@ -309,9 +349,9 @@ export default function IapPage() {
     }
   }
 
-  function snapshotBeforeApply(label: string) {
-    if (currentPrices.length === 0 || !selectedIapId) return;
-    takeSnapshot({
+  async function snapshotBeforeApply(label: string) {
+    if (!selectedIapId) throw new Error("Choose an in-app purchase first.");
+    await takeRequiredSnapshot({
       appId: id,
       scope: `iap:${selectedIapId}`,
       label,
@@ -393,26 +433,47 @@ export default function IapPage() {
     });
   }
 
-  async function applyImport(withSnapshot = true, snapshotName?: string) {
+  async function applyImport(snapshotName?: string) {
     if (!credentials || !importPreview || !selectedIapId) return;
     setSnapshotDialog(false);
     setError("");
     setApplying(true);
     try {
-      if (withSnapshot) snapshotBeforeApply(snapshotName || `Before import · ${importPreview.length} territories`);
+      if (previewMovementCap !== null) {
+        const violations = findMovementCapViolations(
+          new Map(
+            currentPrices.map((row) => [row.territoryId, Number(row.customerPrice)])
+          ),
+          new Map(
+            importPreview.map((row) => [row.territoryId, Number(row.snappedPrice)])
+          ),
+          previewMovementCap
+        );
+        if (violations.length > 0) {
+          throw new Error(
+            movementCapErrorMessage(violations, previewMovementCap)
+          );
+        }
+      }
+      await snapshotBeforeApply(
+        snapshotName || `Before import · ${importPreview.length} territories`
+      );
       await postPriceSchedule(
         importPreview.map((r) => ({ territoryId: r.territoryId, pointId: r.pointId }))
+      );
+      await verifyIapPricePoints(
+        new Map(importPreview.map((row) => [row.territoryId, row.pointId]))
       );
       setApplySummary({
         productLabel:
           iaps.find((i) => i.id === selectedIapId)?.attributes.name ?? selectedIapId,
         regionsChanged: importPreview.length,
         warnings: importWarnings,
+        verified: true,
       });
       setApplied(true);
       setImportPreview(null);
       setSheetText("");
-      await loadPrices(selectedIapId);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -425,17 +486,21 @@ export default function IapPage() {
     setError("");
     setApplying(true);
     try {
+      await snapshotBeforeApply(`Before restoring · ${snapshot.label}`);
       await postPriceSchedule(
         snapshot.rows.map((r) => ({ territoryId: r.territoryId, pointId: r.pricePointId }))
+      );
+      await verifyIapPricePoints(
+        new Map(snapshot.rows.map((row) => [row.territoryId, row.pricePointId]))
       );
       setApplySummary({
         productLabel:
           iaps.find((i) => i.id === selectedIapId)?.attributes.name ?? selectedIapId,
         regionsChanged: snapshot.rows.length,
         warnings: [],
+        verified: true,
       });
       setApplied(true);
-      await loadPrices(selectedIapId);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -519,6 +584,7 @@ export default function IapPage() {
           productLabel={applySummary.productLabel}
           regionsChanged={applySummary.regionsChanged}
           warnings={applySummary.warnings}
+          verified={applySummary.verified}
           onClose={() => setApplySummary(null)}
         />
       )}
@@ -560,7 +626,7 @@ export default function IapPage() {
               <h2 className="font-semibold">
                 Import price sheet{" "}
                 <span className="text-zinc-500 font-normal text-sm">
-                  CSV from any AI or spreadsheet
+                  Controlled policy or spreadsheet
                 </span>
               </h2>
               </div>
@@ -569,7 +635,11 @@ export default function IapPage() {
               platform="ios"
               strategy={strategy}
               onStrategyChange={setStrategy}
-              onResult={async (csv) => { setSheetText(csv); await buildImportPreview(csv); }}
+              onResult={async (csv, cap) => {
+                setPreviewMovementCap(cap);
+                setSheetText(csv);
+                await buildImportPreview(csv);
+              }}
               disabled={currentPrices.length === 0}
               onExportCsv={exportCsv}
             />
@@ -578,6 +648,7 @@ export default function IapPage() {
               onChange={(e) => {
                 setSheetText(e.target.value);
                 setImportPreview(null);
+                setPreviewMovementCap(null);
               }}
               placeholder={"territory,price\nUSA,4.99\nEGY,49.99\nDEU,3.99"}
               rows={4}
@@ -596,6 +667,7 @@ export default function IapPage() {
                     if (f) {
                       setSheetText(await f.text());
                       setImportPreview(null);
+                      setPreviewMovementCap(null);
                     }
                   }}
                 />
@@ -758,8 +830,7 @@ export default function IapPage() {
       <SnapshotConfirmDialog
         open={snapshotDialog}
         defaultName={importPreview ? `Before import · ${importPreview.length} territories` : ""}
-        onSaveAndApply={(name) => applyImport(true, name)}
-        onSkipAndApply={() => applyImport(false)}
+        onSaveAndApply={(name) => applyImport(name)}
         onCancel={() => setSnapshotDialog(false)}
       />
       <PaywallModal

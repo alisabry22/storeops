@@ -5,6 +5,7 @@
  * Includes a request queue to respect Apple's rate limits.
  */
 import { getToken, type AscCredentials } from "./jwt";
+import { getLegacyWriteHeaders } from "@/lib/license";
 
 const PROXY_BASE = "/api/asc";
 
@@ -94,13 +95,16 @@ export async function ascFetch<T = unknown>(
   const MAX_ATTEMPTS = 5;
   for (let attempt = 0; ; attempt++) {
     const token = await getToken(creds);
+    const method = options.method ?? "GET";
+    const writeHeaders = method === "GET" ? {} : await getLegacyWriteHeaders();
     await queue.acquire();
     let res: Response;
     try {
       res = await fetch(url.toString(), {
-        method: options.method ?? "GET",
+        method,
         headers: {
-          Authorization: `Bearer ${token}`,
+          "X-Store-Authorization": `Bearer ${token}`,
+          ...writeHeaders,
           ...(options.body ? { "Content-Type": "application/json" } : {}),
         },
         body: options.body ? JSON.stringify(options.body) : undefined,
@@ -115,7 +119,7 @@ export async function ascFetch<T = unknown>(
     // (a retried POST could double-apply a write).
     const retryable =
       res.status === 429 ||
-      (res.status >= 500 && (options.method ?? "GET") === "GET");
+      (res.status >= 500 && method === "GET");
     if (retryable && attempt < MAX_ATTEMPTS - 1) {
       const retryAfter = Number(res.headers.get("Retry-After"));
       const backoff = retryAfter > 0 ? retryAfter * 1000 : 2000 * 2 ** attempt;

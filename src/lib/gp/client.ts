@@ -4,6 +4,7 @@
  * The proxy only ever sees the short-lived token — never the key.
  */
 import { getGpToken, type GpCredentials } from "./auth";
+import { getLegacyWriteHeaders } from "@/lib/license";
 
 const PROXY_BASE = "/api/gp";
 
@@ -50,10 +51,13 @@ export async function gpFetch<T = unknown>(
   const MAX_ATTEMPTS = 4;
   for (let attempt = 0; ; attempt++) {
     const token = await getGpToken(creds);
+    const method = options.method ?? "GET";
+    const writeHeaders = method === "GET" ? {} : await getLegacyWriteHeaders();
     const res = await fetch(url.toString(), {
-      method: options.method ?? "GET",
+      method,
       headers: {
-        Authorization: `Bearer ${token}`,
+        "X-Store-Authorization": `Bearer ${token}`,
+        ...writeHeaders,
         ...(options.body ? { "Content-Type": "application/json" } : {}),
       },
       body: options.body ? JSON.stringify(options.body) : undefined,
@@ -61,7 +65,7 @@ export async function gpFetch<T = unknown>(
 
     const retryable =
       res.status === 429 ||
-      (res.status >= 500 && (options.method ?? "GET") === "GET");
+      (res.status >= 500 && method === "GET");
     if (retryable && attempt < MAX_ATTEMPTS - 1) {
       await new Promise((r) => setTimeout(r, 1500 * 2 ** attempt));
       continue;

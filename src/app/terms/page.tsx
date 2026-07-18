@@ -44,9 +44,10 @@ export default function TermsPage() {
             your browser as non-extractable keys and are never transmitted to
             our servers. You are responsible for the scope and permissions of
             the keys you create, and for all changes applied to your store
-            listings through the service. Every write operation shows a preview
-            first and saves a snapshot for rollback — review previews before
-            applying.
+            listings through the service. Every pricing write shows a preview
+            first and requires a confirmed price-grid restore point — review
+            previews before applying. Metadata writes are reconciled per locale
+            and do not use pricing snapshots.
           </p>
         </section>
 

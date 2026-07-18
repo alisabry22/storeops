@@ -8,6 +8,7 @@ import { ascFetchAll } from "@/lib/asc/client";
 import { TopBar } from "@/components/TopBar";
 import { useLicense } from "@/lib/license";
 import type { App } from "@/lib/asc/types";
+import { useHydrated } from "@/lib/use-hydrated";
 
 function AppAvatar({ name }: { name: string }) {
   const initials = name
@@ -28,10 +29,8 @@ export default function AppsPage() {
   const { credentials } = useCredentials();
   const [apps, setApps] = useState<App[] | null>(null);
   const [error, setError] = useState("");
-  const [hydrated, setHydrated] = useState(false);
+  const hydrated = useHydrated();
   const { revalidate } = useLicense();
-
-  useEffect(() => setHydrated(true), []);
 
   // Re-check the license against Lemon Squeezy at most once a day
   useEffect(() => {

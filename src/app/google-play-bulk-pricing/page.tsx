@@ -32,7 +32,7 @@ const faqSchema = {
       name: "How do I bulk update prices on Google Play?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "Play Console has no bulk pricing interface — every region is edited one at a time. StoreOps uses the Google Play Developer API to read all your regional prices, lets you edit them as one CSV (or reprice with AI), shows a diff preview, and writes everything back in a single API call.",
+        text: "StoreOps reads the complete regional grid through the Google Play Developer API, builds a controlled preview from a worldwide anchor or the current prices, and applies the reviewed product update through Google's supported API.",
       },
     },
     {
@@ -48,7 +48,7 @@ const faqSchema = {
       name: "Does StoreOps store my Google service account key?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "No. The service-account key is imported as a non-extractable browser key (WebCrypto, IndexedDB). It signs short-lived OAuth tokens locally and physically cannot be read back — it never touches StoreOps servers.",
+        text: "No. The service-account key is imported as a non-extractable browser key in IndexedDB. Its raw material is not exportable after import; it signs short-lived OAuth tokens locally and is never uploaded to StoreOps.",
       },
     },
   ],
@@ -72,8 +72,8 @@ export default function GooglePlayBulkPricingPage() {
       <p className="text-lg text-zinc-400 leading-relaxed mb-10">
         Play Console makes you edit prices one region at a time. StoreOps reads
         every regional price via the Play Developer API, lets you reprice them
-        as one CSV — by hand or with AI — and applies the whole change in one
-        call, with reusable pricing history saved first.
+        as one reviewable grid, saves the current state, and applies the accepted
+        product update through Google&apos;s supported pricing APIs.
       </p>
 
       <section className="mb-12 rounded-xl border border-emerald-900/60 bg-emerald-950/20 p-6">
@@ -99,9 +99,9 @@ export default function GooglePlayBulkPricingPage() {
                 "Every region and currency for the product you pick — in-app products and subscription base plans both supported.",
             },
             {
-              step: "Reprice with AI or a spreadsheet",
+              step: "Choose an anchor or controlled policy",
               detail:
-                "Pick an objective — purchasing-power parity, growth, max revenue, retention, or enterprise — and paste the prompt into any AI. Or edit the CSV yourself.",
+                "Start from one USD anchor using Google's live regional conversion, or make a bounded adjustment to current prices. AI may configure the policy but never invents the price grid.",
             },
             {
               step: "Preview the diff, apply once",
@@ -126,9 +126,9 @@ export default function GooglePlayBulkPricingPage() {
         <h2 className="text-2xl font-bold mb-4">Google Play vs App Store pricing</h2>
         <p className="text-zinc-400 leading-relaxed mb-4">
           Google Play prices are free-form — any value within the currency&apos;s
-          min/max — while Apple restricts you to ~800 fixed price points per
-          territory. That makes Play repricing simpler: whatever your AI or
-          spreadsheet suggests is applied exactly, no tier-snapping needed.
+          min/max — while Apple restricts you to official price points per
+          territory. StoreOps validates the explicit local amounts, shows the
+          full diff, and stops when Google rejects a regional range.
         </p>
         <p className="text-zinc-400 leading-relaxed">
           StoreOps manages both stores with the same workflow, so you can keep

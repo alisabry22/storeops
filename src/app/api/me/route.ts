@@ -52,5 +52,5 @@ export async function GET() {
     }
   }
 
-  return NextResponse.json({ plan: user.plan, email: user.email });
+  return NextResponse.json({ userId: user.id, plan: user.plan, email: user.email });
 }

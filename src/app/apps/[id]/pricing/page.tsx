@@ -9,17 +9,27 @@ import { PaywallModal, estimateManualMinutes } from "@/components/Paywall";
 import { SnapshotPanel } from "@/components/SnapshotPanel";
 import { TopBar } from "@/components/TopBar";
 import { useIsPro } from "@/lib/license";
-import { takeSnapshot, type PriceSnapshot } from "@/lib/snapshots";
+import { useHydrated } from "@/lib/use-hydrated";
+import {
+  takeRequiredSnapshot,
+  takeSnapshot,
+  type PriceSnapshot,
+} from "@/lib/snapshots";
 import {
   buildCsv,
   parsePriceSheet,
   snapToPricePoint,
 } from "@/lib/pricing-import";
 import { type PricingStrategy } from "@/lib/pricing-strategies";
+import {
+  findMovementCapViolations,
+  movementCapErrorMessage,
+} from "@/lib/pricing-policy";
 import { AiRepricePanel } from "@/components/AiRepricePanel";
 import { SnapshotConfirmDialog } from "@/components/SnapshotConfirmDialog";
 import { ApplySuccessDialog } from "@/components/ApplySuccessDialog";
 import { UpdateStatus } from "@/components/UpdateStatus";
+import { verifyPricePointsWithRetry } from "@/lib/price-verification";
 import type {
   AppPrice,
   AppPricePoint,
@@ -99,7 +109,7 @@ export default function PricingPage() {
   const router = useRouter();
   const { credentials } = useCredentials();
 
-  const [hydrated, setHydrated] = useState(false);
+  const hydrated = useHydrated();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [noSchedule, setNoSchedule] = useState(false);
@@ -124,6 +134,7 @@ export default function PricingPage() {
     productLabel: string;
     regionsChanged: number;
     warnings: string[];
+    verified: boolean;
   } | null>(null);
   const [snapshotDialog, setSnapshotDialog] = useState(false);
 
@@ -140,13 +151,12 @@ export default function PricingPage() {
   } | null>(null);
   const [keepExistingManual, setKeepExistingManual] = useState(true);
   const [strategy, setStrategy] = useState<PricingStrategy>("ppp");
+  const [previewMovementCap, setPreviewMovementCap] = useState<number | null>(null);
 
   // Pro gate + snapshots
   const isPro = useIsPro();
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [snapRefresh, setSnapRefresh] = useState(0);
-
-  useEffect(() => setHydrated(true), []);
 
   // All valid territories + currencies (one cheap fetch, used for validation)
   useEffect(() => {
@@ -165,6 +175,7 @@ export default function PricingPage() {
     setLoading(true);
     setError("");
     try {
+      setNoSchedule(false);
       // Does a price schedule exist? (Free apps that never set one → 404)
       let scheduleId: string | null = null;
       try {
@@ -209,18 +220,40 @@ export default function PricingPage() {
         const byTerritory = new Map<string, PriceRow>();
         for (const r of autoRows) byTerritory.set(r.territoryId, r);
         for (const r of manualRows) byTerritory.set(r.territoryId, r);
-        setCurrentPrices(
-          [...byTerritory.values()].sort((a, b) =>
-            a.territoryId.localeCompare(b.territoryId)
-          )
+        const loaded = [...byTerritory.values()].sort((a, b) =>
+          a.territoryId.localeCompare(b.territoryId)
         );
+        setCurrentPrices(loaded);
+        return loaded;
       }
+      setCurrentPrices([]);
+      return [];
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      return null;
     } finally {
       setLoading(false);
     }
   }, [credentials, id]);
+
+  async function verifyAppPricePoints(
+    expected: ReadonlyMap<string, string>
+  ) {
+    const mismatches = await verifyPricePointsWithRetry(expected, async () => {
+      const rows = await loadCurrent();
+      return rows
+        ? new Map(rows.map((row) => [row.territoryId, row.pricePointId]))
+        : null;
+    });
+    if (mismatches.length > 0) {
+      throw new Error(
+        `Apple accepted the schedule, but live verification did not match for ${mismatches
+          .slice(0, 6)
+          .map((item) => item.territoryId)
+          .join(", ")}${mismatches.length > 6 ? "…" : ""}. Do not retry until you refresh and review the live grid.`
+      );
+    }
+  }
 
   useEffect(() => {
     if (!hydrated) return;
@@ -228,7 +261,7 @@ export default function PricingPage() {
       router.replace("/");
       return;
     }
-    loadCurrent();
+    queueMicrotask(() => void loadCurrent());
   }, [hydrated, credentials, router, loadCurrent]);
 
   // Load price points for the base territory (for the "new price" dropdown)
@@ -262,6 +295,7 @@ export default function PricingPage() {
     setApplied(false);
     setApplySummary(null);
     try {
+      setPreviewMovementCap(null);
       const { data: equalized, included } = await ascFetchAllFull<
         AppPricePoint,
         Territory
@@ -355,9 +389,8 @@ export default function PricingPage() {
   }
 
   /** Save current prices locally before any write — the undo button. */
-  function snapshotBeforeApply(label: string) {
-    if (currentPrices.length === 0) return;
-    takeSnapshot({
+  async function snapshotBeforeApply(label: string) {
+    await takeRequiredSnapshot({
       appId: id,
       scope: "app-pricing",
       label,
@@ -422,20 +455,26 @@ export default function PricingPage() {
     setApplying(true);
     setError("");
     try {
+      await snapshotBeforeApply(
+        `Before worldwide anchor · ${preview.length} territories`
+      );
       await postSchedule([
         base,
         ...overrides.filter((r) => r.territoryId !== baseTerritory),
       ]);
+      await verifyAppPricePoints(
+        new Map(preview.map((row) => [row.territoryId, row.pointId]))
+      );
       setApplySummary({
         productLabel: "App pricing matrix",
         regionsChanged: preview.length,
         warnings: [],
+        verified: true,
       });
       setApplied(true);
       setPreview(null);
       setSelectedPointId("");
       setNoSchedule(false);
-      await loadCurrent();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -455,6 +494,7 @@ export default function PricingPage() {
     setApplying(true);
     setError("");
     try {
+      await snapshotBeforeApply(`Before restoring · ${snapshot.label}`);
       const manualRows = snapshot.rows.filter(
         (r) => r.manual && r.territoryId !== base
       );
@@ -465,14 +505,17 @@ export default function PricingPage() {
         ],
         base
       );
+      await verifyAppPricePoints(
+        new Map(snapshot.rows.map((row) => [row.territoryId, row.pricePointId]))
+      );
       setApplySummary({
         productLabel: "App pricing matrix",
         regionsChanged: snapshot.rows.length,
         warnings: [],
+        verified: true,
       });
       setApplied(true);
       setNoSchedule(false);
-      await loadCurrent();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -568,12 +611,28 @@ export default function PricingPage() {
     }
   }
 
-  async function applyImport(withSnapshot = true, snapshotName?: string) {
+  async function applyImport(snapshotName?: string) {
     if (!credentials || !importPreview) return;
     setSnapshotDialog(false);
     setApplying(true);
     setError("");
     try {
+      if (previewMovementCap !== null) {
+        const violations = findMovementCapViolations(
+          new Map(
+            currentPrices.map((row) => [row.territoryId, Number(row.customerPrice)])
+          ),
+          new Map(
+            importPreview.map((row) => [row.territoryId, Number(row.snappedPrice)])
+          ),
+          previewMovementCap
+        );
+        if (violations.length > 0) {
+          throw new Error(
+            movementCapErrorMessage(violations, previewMovementCap)
+          );
+        }
+      }
       const inSheet = new Map(importPreview.map((r) => [r.territoryId, r]));
 
       // Base territory price is required: from the sheet, or current schedule
@@ -604,18 +663,23 @@ export default function PricingPage() {
         }
       }
 
-      if (withSnapshot) snapshotBeforeApply(snapshotName || `Before import · ${importPreview.length} territories`);
+      await snapshotBeforeApply(
+        snapshotName || `Before import · ${importPreview.length} territories`
+      );
       await postSchedule(manual);
+      await verifyAppPricePoints(
+        new Map(importPreview.map((row) => [row.territoryId, row.pointId]))
+      );
       setApplySummary({
         productLabel: "App pricing matrix",
         regionsChanged: importPreview.length,
         warnings: importWarnings,
+        verified: true,
       });
       setApplied(true);
       setImportPreview(null);
       setSheetText("");
       setNoSchedule(false);
-      await loadCurrent();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -694,6 +758,7 @@ export default function PricingPage() {
           productLabel={applySummary.productLabel}
           regionsChanged={applySummary.regionsChanged}
           warnings={applySummary.warnings}
+          verified={applySummary.verified}
           onClose={() => setApplySummary(null)}
         />
       )}
@@ -704,7 +769,7 @@ export default function PricingPage() {
           <h2 className="font-semibold">
             Import price sheet{" "}
             <span className="text-zinc-500 font-normal text-sm">
-              CSV from any AI or spreadsheet
+              Controlled policy or spreadsheet
             </span>
           </h2>
         </div>
@@ -713,7 +778,11 @@ export default function PricingPage() {
           platform="ios"
           strategy={strategy}
           onStrategyChange={setStrategy}
-          onResult={async (csv) => { setSheetText(csv); await buildImportPreview(csv); }}
+          onResult={async (csv, cap) => {
+            setPreviewMovementCap(cap);
+            setSheetText(csv);
+            await buildImportPreview(csv);
+          }}
           disabled={currentPrices.length === 0}
           onExportCsv={exportCsv}
         />
@@ -722,6 +791,7 @@ export default function PricingPage() {
           onChange={(e) => {
             setSheetText(e.target.value);
             setImportPreview(null);
+            setPreviewMovementCap(null);
           }}
           placeholder={"territory,price\nUSA,4.99\nEGY,49.99\nDEU,3.99"}
           rows={4}
@@ -739,6 +809,7 @@ export default function PricingPage() {
                 if (f) {
                   setSheetText(await f.text());
                   setImportPreview(null);
+                  setPreviewMovementCap(null);
                 }
               }}
             />
@@ -1074,8 +1145,7 @@ export default function PricingPage() {
       <SnapshotConfirmDialog
         open={snapshotDialog}
         defaultName={importPreview ? `Before import · ${importPreview.length} territories` : ""}
-        onSaveAndApply={(name) => applyImport(true, name)}
-        onSkipAndApply={() => applyImport(false)}
+        onSaveAndApply={(name) => applyImport(name)}
         onCancel={() => setSnapshotDialog(false)}
       />
       <PaywallModal

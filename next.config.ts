@@ -16,6 +16,11 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // Keep Turbopack scoped to this repository when a parent directory also
+  // contains a package-lock.json.
+  turbopack: {
+    root: process.cwd(),
+  },
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];
   },

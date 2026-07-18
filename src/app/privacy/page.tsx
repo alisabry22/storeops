@@ -46,9 +46,9 @@ export default function PrivacyPage() {
                 non-extractable WebCrypto keys
               </strong>{" "}
               in your browser&apos;s local storage (IndexedDB). They sign
-              short-lived API tokens locally and physically cannot be read
-              back or exported — by our code, your browser extensions, or
-              anyone else.
+              short-lived API tokens locally. Their raw key material is marked
+              non-extractable and cannot be exported through WebCrypto after
+              import.
             </li>
             <li>
               Your store data — app listings, prices, and metadata flow

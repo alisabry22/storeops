@@ -10,30 +10,42 @@ import { create } from "zustand";
 export type AccountPlan = "free" | "pro" | "lifetime";
 
 interface AccountState {
+  userId: string | null;
   plan: AccountPlan | null;
   email: string | null;
   loaded: boolean;
-  fetchMe: () => Promise<void>;
+  fetchMe: (force?: boolean) => Promise<void>;
   reset: () => void;
 }
 
 export const useAccount = create<AccountState>((set, get) => ({
+  userId: null,
   plan: null,
   email: null,
   loaded: false,
 
-  fetchMe: async () => {
-    if (get().loaded) return;
+  fetchMe: async (force = false) => {
+    if (get().loaded && !force) return;
     try {
       const res = await fetch("/api/me");
       if (res.ok) {
-        const json: { plan: AccountPlan; email: string | null } = await res.json();
-        set({ plan: json.plan, email: json.email, loaded: true });
+        const json: {
+          userId: string;
+          plan: AccountPlan;
+          email: string | null;
+        } = await res.json();
+        set({
+          userId: json.userId,
+          plan: json.plan,
+          email: json.email,
+          loaded: true,
+        });
       }
     } catch {
       // offline / not configured — stay unloaded, retry next mount
     }
   },
 
-  reset: () => set({ plan: null, email: null, loaded: false }),
+  reset: () =>
+    set({ userId: null, plan: null, email: null, loaded: false }),
 }));

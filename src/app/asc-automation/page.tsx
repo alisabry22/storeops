@@ -73,7 +73,7 @@ export default function AscAutomationPage() {
           {[
             {
               title: "Pricing across 175 territories",
-              body: "Export prices, reprice with AI for purchasing power parity, import back. All 175 storefronts updated in one operation with automatic rate-limit handling and retry.",
+              body: "Build a bounded regional policy from current prices, review official Apple tiers, then apply the accepted storefront schedules with rate-limit handling.",
             },
             {
               title: "Subscription repricing",
@@ -85,7 +85,7 @@ export default function AscAutomationPage() {
             },
             {
               title: "In-App Purchase pricing",
-              body: "Set IAP prices across all 175 territories in a single API call. One POST to Apple instead of 175 individual updates.",
+              body: "Set IAP prices across every selected territory through the supported App Store Connect pricing endpoints, with progress and explicit failures.",
             },
             {
               title: "Snapshots and rollback",

@@ -1,41 +1,98 @@
-/**
- * Lemon Squeezy webhook → account plans, zero manual key entry.
- *
- * order_created / subscription_created  → plan: pro (matched by email)
- * subscription_expired                  → plan: free
- *
- * If no account exists for the buyer's email yet, the upgrade is parked in
- * pending_upgrades and applied automatically on their first sign-in (/api/me).
- *
- * Configure in LS: Settings → Webhooks → https://<domain>/api/webhooks/lemonsqueezy
- * with secret LEMONSQUEEZY_WEBHOOK_SECRET.
- */
-import crypto from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
-import { pendingUpgrades, usageEvents, users } from "@/db/schema";
+import {
+  billingEntitlements,
+  pendingUpgrades,
+  usageEvents,
+  users,
+} from "@/db/schema";
+import {
+  identifyLemonPlan,
+  isInactiveLemonStatus,
+  lemonEntitlementExternalId,
+  verifyLemonSignature,
+} from "@/lib/server/lemonsqueezy";
 
 export const runtime = "nodejs";
 
-interface LsWebhook {
-  meta?: { event_name?: string };
+export interface LsWebhook {
+  meta?: {
+    event_name?: string;
+    custom_data?: { user_id?: string | number };
+  };
   data?: {
+    id?: string;
+    type?: string;
     attributes?: {
       user_email?: string;
-      // orders have first_order_item; subscriptions carry product_name directly
-      first_order_item?: { product_name?: string };
+      first_order_item?: {
+        product_name?: string;
+        product_id?: number;
+        variant_id?: number;
+      };
       product_name?: string;
+      product_id?: number;
+      variant_id?: number;
       status?: string;
     };
   };
 }
 
-function verifySignature(raw: string, signature: string, secret: string): boolean {
-  const hmac = crypto.createHmac("sha256", secret).update(raw).digest("hex");
-  const a = Buffer.from(hmac);
-  const b = Buffer.from(signature);
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
+async function recomputeCustomerPlan(
+  email: string,
+  options: { preserveLegacyPaid?: boolean; userId?: string } = {}
+) {
+  const db = getDb();
+  const entitlements = await db
+    .select()
+    .from(billingEntitlements)
+    .where(eq(billingEntitlements.email, email));
+  const active = entitlements.filter(
+    (item) => !isInactiveLemonStatus(item.status)
+  );
+  const plan = active.some((item) => item.plan === "lifetime")
+    ? "lifetime"
+    : active.some((item) => item.plan === "pro")
+      ? "pro"
+      : "free";
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(
+      options.userId ? eq(users.id, options.userId) : eq(users.email, email)
+    );
+
+  // The entitlement ledger is new. A first-seen expiry for a subscription
+  // created before this ledger cannot prove there is no newer paid purchase.
+  // Keep the existing paid account until this external subscription has first
+  // been observed active. Explicit refunds are never preserved this way.
+  if (
+    options.preserveLegacyPaid &&
+    user &&
+    user.planSource === "lemonsqueezy" &&
+    (user.plan === "pro" || user.plan === "lifetime") &&
+    plan === "free"
+  ) {
+    return { plan: user.plan, matched: true, preservedLegacy: true };
+  }
+
+  if (user && (user.planSource === "lemonsqueezy" || user.plan === "free")) {
+    await db
+      .update(users)
+      .set({ plan, planSource: plan === "free" ? null : "lemonsqueezy" })
+      .where(eq(users.id, user.id));
+  }
+
+  if (plan === "free") {
+    await db.delete(pendingUpgrades).where(eq(pendingUpgrades.email, email));
+  } else if (!user) {
+    await db
+      .insert(pendingUpgrades)
+      .values({ email, plan })
+      .onConflictDoUpdate({ target: pendingUpgrades.email, set: { plan } });
+  }
+  return { plan, matched: !!user };
 }
 
 export async function POST(req: NextRequest) {
@@ -46,13 +103,13 @@ export async function POST(req: NextRequest) {
 
   const raw = await req.text();
   const signature = req.headers.get("x-signature") ?? "";
-  if (!signature || !verifySignature(raw, signature, secret)) {
+  if (!signature || !verifyLemonSignature(raw, signature, secret)) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
   let payload: LsWebhook;
   try {
-    payload = JSON.parse(raw);
+    payload = JSON.parse(raw) as LsWebhook;
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
@@ -60,52 +117,100 @@ export async function POST(req: NextRequest) {
   const event = payload.meta?.event_name ?? "";
   const attrs = payload.data?.attributes;
   const email = attrs?.user_email?.toLowerCase().trim();
-  if (!email) return NextResponse.json({ ok: true, skipped: "no email" });
+  const customUserIdValue = payload.meta?.custom_data?.user_id;
+  const customUserId =
+    customUserIdValue === undefined ? undefined : String(customUserIdValue);
+  const rawExternalId = payload.data?.id;
+  const resourceType = payload.data?.type ?? "unknown";
+  if (!email || !rawExternalId) {
+    return NextResponse.json({ ok: true, skipped: "missing customer identity" });
+  }
+  // Lemon Squeezy IDs are scoped to their resource collection. Prefixing the
+  // type prevents an order and subscription with the same numeric ID from
+  // overwriting one another in the entitlement ledger.
+  const externalId = lemonEntitlementExternalId(resourceType, rawExternalId);
 
-  const productName = (
-    attrs?.first_order_item?.product_name ??
-    attrs?.product_name ??
-    ""
-  ).toLowerCase();
-  const plan = productName.includes("lifetime") ? "lifetime" : "pro";
+  const plan = identifyLemonPlan(attrs);
+  if (!plan) {
+    return NextResponse.json({ ok: true, skipped: "unknown StoreOps variant" });
+  }
 
+  const isLifetimeOrder = event === "order_created" && plan === "lifetime";
+  const isSubscriptionEvent = event.startsWith("subscription_");
+  const isRefund = event === "order_refunded";
+  if (!isLifetimeOrder && !isSubscriptionEvent && !isRefund) {
+    return NextResponse.json({ ok: true, ignored: event });
+  }
+
+  const inactiveEvent = event === "subscription_expired" || isRefund;
+  const item = attrs?.first_order_item;
+  const productId = attrs?.product_id ?? item?.product_id;
+  const variantId = attrs?.variant_id ?? item?.variant_id;
   const db = getDb();
+  let [user] = await db
+    .select()
+    .from(users)
+    .where(customUserId ? eq(users.id, customUserId) : eq(users.email, email));
+  if (!user && customUserId) {
+    [user] = await db.select().from(users).where(eq(users.email, email));
+  }
+  const [existingEntitlement] = await db
+    .select({ status: billingEntitlements.status })
+    .from(billingEntitlements)
+    .where(eq(billingEntitlements.externalId, externalId))
+    .limit(1);
+  const preserveLegacyPaid =
+    event === "subscription_expired" &&
+    (existingEntitlement?.status === "legacy_expired_unverified" ||
+      (!existingEntitlement &&
+        user?.planSource === "lemonsqueezy" &&
+        (user.plan === "pro" || user.plan === "lifetime")));
+  const status = preserveLegacyPaid
+    ? "legacy_expired_unverified"
+    : inactiveEvent
+      ? isRefund
+        ? "refunded"
+        : "expired"
+      : attrs?.status ?? "active";
 
-  if (event === "order_created" || event === "subscription_created") {
-    const [user] = await db.select().from(users).where(eq(users.email, email));
-    if (user) {
-      await db
-        .update(users)
-        .set({ plan, planSource: "lemonsqueezy" })
-        .where(eq(users.id, user.id));
-    } else {
-      // Bought before signing up — park it, applied on first sign-in
-      await db
-        .insert(pendingUpgrades)
-        .values({ email, plan })
-        .onConflictDoUpdate({ target: pendingUpgrades.email, set: { plan } });
-    }
-    try {
-      await db.insert(usageEvents).values({
+  await db
+    .insert(billingEntitlements)
+    .values({
+      externalId,
+      email,
+      userId: user?.id ?? null,
+      kind: resourceType,
+      plan,
+      status,
+      productId: productId ? String(productId) : null,
+      variantId: variantId ? String(variantId) : null,
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: billingEntitlements.externalId,
+      set: {
+        email,
         userId: user?.id ?? null,
-        event: "purchase_webhook",
-        props: { event, plan, matched: !!user },
-      });
-    } catch {
-      // analytics are best-effort
-    }
-    return NextResponse.json({ ok: true, plan, matched: !!user });
-  }
+        plan,
+        status,
+        productId: productId ? String(productId) : null,
+        variantId: variantId ? String(variantId) : null,
+        updatedAt: new Date(),
+      },
+    });
 
-  if (event === "subscription_expired") {
-    // Lifetime plans never expire; only downgrade subscription-sourced pro
-    const [user] = await db.select().from(users).where(eq(users.email, email));
-    if (user && user.plan === "pro") {
-      await db.update(users).set({ plan: "free" }).where(eq(users.id, user.id));
-    }
-    await db.delete(pendingUpgrades).where(eq(pendingUpgrades.email, email));
-    return NextResponse.json({ ok: true, downgraded: !!user });
+  const result = await recomputeCustomerPlan(email, {
+    preserveLegacyPaid,
+    userId: user?.id,
+  });
+  try {
+    await db.insert(usageEvents).values({
+      userId: user?.id ?? null,
+      event: "purchase_webhook",
+      props: { event, externalId, plan, status, resolvedPlan: result.plan },
+    });
+  } catch {
+    // Analytics never block entitlement processing.
   }
-
-  return NextResponse.json({ ok: true, ignored: event });
+  return NextResponse.json({ ok: true, ...result });
 }

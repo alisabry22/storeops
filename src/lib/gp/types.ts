@@ -18,6 +18,18 @@ export interface GpMoney {
   nanos?: number;
 }
 
+export interface GpConvertedRegionPrice {
+  regionCode: string;
+  price: GpMoney;
+  taxAmount?: GpMoney;
+}
+
+export interface GpConvertRegionPricesResponse {
+  convertedRegionPrices?: Record<string, GpConvertedRegionPrice>;
+  convertedOtherRegionsPrice?: { usdPrice?: GpMoney; eurPrice?: GpMoney };
+  regionVersion?: { version?: string };
+}
+
 export interface GpInAppProduct {
   packageName: string;
   sku: string;
@@ -79,59 +91,22 @@ export interface GpSubscription {
 }
 
 /**
- * Required currencies per region under Google Play's regions version 2022/02.
- * Subscriptions created before this spec can have stale currency codes (e.g. EUR
- * for Bulgaria). Sending a PATCH with a mismatched currency causes a 400 even for
- * regions you didn't touch, because Google re-validates the entire regionalConfigs
- * array. Correct these before building the update payload.
+ * Do not hard-code billability: it belongs to the RegionsVersion returned by
+ * Google and can change. The apply loop learns a non-billable region from the
+ * API response for the exact version used by that write.
  */
-export const GP_REQUIRED_CURRENCY_2022_02: Record<string, string> = {
-  BG: "BGN", // Bulgaria — confirmed by API error
-  CZ: "CZK", // Czech Republic
-  DK: "DKK", // Denmark
-  HU: "HUF", // Hungary
-  PL: "PLN", // Poland
-  RO: "RON", // Romania
-  SE: "SEK", // Sweden
-  CH: "CHF", // Switzerland
-  NO: "NOK", // Norway
-  GB: "GBP", // United Kingdom
-  IS: "EUR", // Iceland — Google Play uses EUR, not ISK (confirmed by API)
-  TR: "TRY", // Turkey
-  UA: "UAH", // Ukraine
-  RS: "RSD", // Serbia
-  // Africa — confirmed by live API errors
-  CI: "USD", // Côte d'Ivoire (XOF → USD, confirmed)
-  CM: "USD", // Cameroon (XAF → USD, confirmed)
-  SN: "USD", // Senegal (XOF → USD, confirmed)
-  GH: "GHS", // Ghana (confirmed — NOT USD)
-  KE: "KES", // Kenya (confirmed — NOT USD)
-};
+export const GP_NOT_BILLABLE = new Set<string>();
 
 /**
- * Regions that are not billable under the 2022/02 spec.
- * Google rejects any PATCH that includes these in regionalConfigs.
- * Exclude them from exports too — no point sending them to ChatGPT.
+ * Preserve the currency Google returned with the live product. Currency
+ * assignments change over time and can also vary by Google's regions version;
+ * hard-coded overrides turned 14,200 XOF into 14,200 USD for Côte d'Ivoire.
+ * Changed prices get their authoritative currency from convertRegionPrices.
+ * If an untouched legacy config is stale, the PATCH error supplies the current
+ * expected currency and the apply loop corrects that specific config.
  */
-export const GP_NOT_BILLABLE = new Set<string>(["MN"]);
-
-/**
- * Approximate USD price caps for regions that use USD under the 2022/02 spec
- * but have tight Google-imposed ceilings (confirmed by live PATCH errors).
- * Values are conservative — stay below these when generating prices.
- */
-export const GP_USD_PRICE_CAPS: Record<string, { min: number; max: number }> = {
-  CI: { min: 1.0, max: 1000 }, // F CFA 30–627,341 ≈ $0.05–$1,020 USD
-  CM: { min: 1.0, max: 1000 }, // XAF equivalent, confirmed by range error
-  SN: { min: 1.0, max: 1000 }, // XOF equivalent, confirmed by range error
-};
-
-/**
- * Returns the correct currency for a region under the 2022/02 spec.
- * Falls back to `existingCurrency` for regions not in the override map.
- */
-export function requiredCurrency(regionCode: string, existingCurrency: string): string {
-  return GP_REQUIRED_CURRENCY_2022_02[regionCode] ?? existingCurrency;
+export function requiredCurrency(_regionCode: string, existingCurrency: string): string {
+  return existingCurrency;
 }
 
 /** One row of the unified Play pricing table (regionCode is ISO 3166-1 alpha-2). */
@@ -154,7 +129,10 @@ export function moneyToDecimal(m: GpMoney): string {
   const units = Number(m.units ?? 0);
   const nanos = (m.nanos ?? 0) / 1_000_000_000;
   const n = units + nanos;
-  return Number.isInteger(n) ? String(n) : n.toFixed(2);
+  // Preserve the precision Google returned. Rounding this to two decimals can
+  // create false verification failures for currencies and price points that
+  // legitimately use more precision.
+  return String(Math.round(n * 1_000_000_000) / 1_000_000_000);
 }
 
 export function decimalToMoney(price: number, currencyCode: string): GpMoney {

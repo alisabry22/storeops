@@ -12,6 +12,13 @@ export interface ControlledPricingPolicy {
   maxChangePercent: number;
 }
 
+export interface MovementCapViolation {
+  territoryId: string;
+  currentPrice: number;
+  nextPrice: number;
+  movementPercent: number;
+}
+
 // These are product-market bands, not a claim that GDP can predict willingness
 // to pay. Unknown territories deliberately stay at the existing price.
 const VALUE_MARKETS = new Set([
@@ -21,24 +28,26 @@ const MID_MARKETS = new Set([
   "ALB", "ARM", "AZE", "BIH", "BLR", "BGR", "CHL", "CHN", "CRI", "CYP", "CZE", "DOM", "GEO", "GRC", "GTM", "HRV", "HUN", "IRQ", "JAM", "JOR", "KAZ", "LBN", "MEX", "MKD", "MNE", "MNG", "MYS", "NAM", "PAN", "POL", "ROU", "RUS", "SRB", "SVK", "THA", "TWN", "URY",
 ]);
 
-// Google Play uses ISO alpha-2 regions. Map the commonly price-sensitive
-// markets; unmapped alpha-2 regions are intentionally left unchanged.
-const ISO2_TO_ISO3: Record<string, string> = {
-  AR: "ARG", BR: "BRA", CL: "CHL", CN: "CHN", CO: "COL", EG: "EGY", ID: "IDN", IN: "IND", KE: "KEN", MX: "MEX", NG: "NGA", PK: "PAK", PH: "PHL", TH: "THA", TR: "TUR", TW: "TWN", VN: "VNM", ZA: "ZAF",
-  US: "USA", GB: "GBR", DE: "DEU", FR: "FRA", AU: "AUS", CA: "CAN", JP: "JPN", KR: "KOR", SG: "SGP",
-};
+// Google Play uses ISO alpha-2 regions. Keep the complete policy-band sets in
+// both store formats so an Android market never stays unchanged merely because
+// its code has two letters instead of Apple's three.
+const VALUE_MARKETS_ISO2 = new Set([
+  "AF", "AO", "AR", "BJ", "BF", "BD", "BO", "BR", "CI", "CM", "CD", "CG", "CO", "DZ", "EC", "EG", "GH", "GM", "GW", "HN", "ID", "IN", "KE", "KH", "KG", "LA", "LR", "LK", "MA", "MD", "MG", "ML", "MM", "MZ", "MR", "MW", "NE", "NG", "NI", "NP", "PK", "PE", "PH", "PG", "PY", "RW", "SN", "SL", "SB", "ST", "TD", "TJ", "TN", "TR", "TZ", "UG", "UA", "UZ", "VE", "VN", "YE", "ZA", "ZM", "ZW",
+]);
+const MID_MARKETS_ISO2 = new Set([
+  "AL", "AM", "AZ", "BA", "BY", "BG", "CL", "CN", "CR", "CY", "CZ", "DO", "GE", "GR", "GT", "HR", "HU", "IQ", "JM", "JO", "KZ", "LB", "MX", "MK", "ME", "MN", "MY", "NA", "PA", "PL", "RO", "RU", "RS", "SK", "TH", "TW", "UY",
+]);
 
 function bandFor(territory: string): "value" | "mid" | "standard" {
+  if (VALUE_MARKETS_ISO2.has(territory)) return "value";
+  if (MID_MARKETS_ISO2.has(territory)) return "mid";
   if (VALUE_MARKETS.has(territory)) return "value";
   if (MID_MARKETS.has(territory)) return "mid";
   return "standard";
 }
 
 export function pricingPolicyMultiplier(strategy: PricingStrategy, territory: string): number {
-  const normalizedTerritory = ISO2_TO_ISO3[territory] ?? territory;
-  // An unclassified Android region should never be moved by inference.
-  if (territory.length === 2 && !ISO2_TO_ISO3[territory]) return 1;
-  const band = bandFor(normalizedTerritory);
+  const band = bandFor(territory);
   switch (strategy) {
     case "ppp":
       return band === "value" ? 0.7 : band === "mid" ? 0.85 : 1;
@@ -64,6 +73,54 @@ export function stagePriceTowardTarget(
   const minimum = currentPrice * (1 - limit);
   const maximum = currentPrice * (1 + limit);
   return Math.max(minimum, Math.min(maximum, finalTarget));
+}
+
+/**
+ * Validate the final store-approved values, not just the intermediate policy
+ * targets. Apple tier snapping and Google regional normalization can otherwise
+ * move a price beyond the cap after the preview was generated.
+ */
+export function findMovementCapViolations(
+  currentPrices: ReadonlyMap<string, number>,
+  nextPrices: ReadonlyMap<string, number>,
+  maxChangePercent: number,
+  tolerancePercent = 0.001
+): MovementCapViolation[] {
+  const cap = Math.max(1, Math.min(maxChangePercent, 50));
+  const violations: MovementCapViolation[] = [];
+  for (const [territoryId, nextPrice] of nextPrices) {
+    const currentPrice = currentPrices.get(territoryId);
+    if (
+      currentPrice === undefined ||
+      currentPrice <= 0 ||
+      !Number.isFinite(currentPrice) ||
+      !Number.isFinite(nextPrice)
+    ) {
+      continue;
+    }
+    const movementPercent =
+      (Math.abs(nextPrice - currentPrice) / currentPrice) * 100;
+    if (movementPercent - cap > tolerancePercent) {
+      violations.push({
+        territoryId,
+        currentPrice,
+        nextPrice,
+        movementPercent,
+      });
+    }
+  }
+  return violations;
+}
+
+export function movementCapErrorMessage(
+  violations: MovementCapViolation[],
+  maxChangePercent: number
+): string {
+  const regions = violations
+    .slice(0, 6)
+    .map((item) => `${item.territoryId} (${item.movementPercent.toFixed(1)}%)`)
+    .join(", ");
+  return `Final store-valid prices exceed the ${maxChangePercent}% movement cap for ${regions}${violations.length > 6 ? "…" : ""}. Nothing was written. Lower the target, increase the cap, or explicitly choose the full-target override.`;
 }
 
 export function generateControlledPriceCsv(

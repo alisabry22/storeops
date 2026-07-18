@@ -6,17 +6,30 @@ import { PaywallModal } from "@/components/Paywall";
 import { RequireAccount } from "@/components/RequireAccount";
 import { SnapshotConfirmDialog } from "@/components/SnapshotConfirmDialog";
 import { ApplySuccessDialog } from "@/components/ApplySuccessDialog";
+import { AiRepricePanel } from "@/components/AiRepricePanel";
 import { UpdateStatus } from "@/components/UpdateStatus";
 import { SnapshotPanel } from "@/components/SnapshotPanel";
 import { useIsPro } from "@/lib/license";
-import { takeSnapshot, type PriceSnapshot } from "@/lib/snapshots";
-import { buildCsv, parsePriceSheet } from "@/lib/pricing-import";
+import { useHydrated } from "@/lib/use-hydrated";
 import {
-  STRATEGIES,
-  type PricingStrategy,
-  getStrategy,
-} from "@/lib/pricing-strategies";
-import { generateControlledPriceCsv } from "@/lib/pricing-policy";
+  takeRequiredSnapshot,
+  takeSnapshot,
+  type PriceSnapshot,
+} from "@/lib/snapshots";
+import { buildCsv, parsePriceSheet } from "@/lib/pricing-import";
+import { findPriceMismatches } from "@/lib/price-verification";
+import { STRATEGIES, type PricingStrategy } from "@/lib/pricing-strategies";
+import {
+  findMovementCapViolations,
+  movementCapErrorMessage,
+  pricingPolicyMultiplier,
+  stagePriceTowardTarget,
+} from "@/lib/pricing-policy";
+import {
+  groupRegionalAnchorEstimates,
+  matchingApprovedRegionalPrices,
+  type GoogleApprovedPricingPreview,
+} from "@/lib/gp/price-normalization";
 import { storeServiceAccount } from "@/lib/gp/auth";
 import { gpFetch, GpError } from "@/lib/gp/client";
 import { useGpStore } from "@/lib/gp/store";
@@ -27,11 +40,12 @@ import {
   moneyToDecimal,
   requiredCurrency,
   GP_NOT_BILLABLE,
-  GP_USD_PRICE_CAPS,
   type GpInAppProduct,
   type GpOneTimeProduct,
+  type GpMoney,
   type GpPriceRow,
   type GpSubscription,
+  type GpConvertRegionPricesResponse,
 } from "@/lib/gp/types";
 
 const API = "/androidpublisher/v3/applications";
@@ -56,18 +70,23 @@ type IapProduct = {
 
 /** Unified product selector: one-time products and subscription base plans. */
 type ProductRef =
-  | { kind: "iap"; productId: string; title: string }
+  | {
+      kind: "iap";
+      productId: string;
+      purchaseOptionId?: string;
+      title: string;
+    }
   | { kind: "sub"; productId: string; basePlanId: string; title: string };
 
 function refKey(r: ProductRef): string {
   return r.kind === "iap"
-    ? `iap:${r.productId}`
+    ? `iap:${r.productId}${r.purchaseOptionId ? `:${r.purchaseOptionId}` : ""}`
     : `sub:${r.productId}:${r.basePlanId}`;
 }
 
 function refLabel(r: ProductRef): string {
   return r.kind === "iap"
-    ? `${r.title} · one-time · ${r.productId}`
+    ? `${r.title} · one-time · ${r.productId}${r.purchaseOptionId ? `/${r.purchaseOptionId}` : ""}`
     : `${r.title} · base plan · ${r.productId}/${r.basePlanId}`;
 }
 
@@ -99,7 +118,7 @@ export default function PlayPage() {
     removePackage,
   } = useGpStore();
 
-  const [hydrated, setHydrated] = useState(false);
+  const hydrated = useHydrated();
   const [error, setError] = useState("");
 
   // Connect flow
@@ -119,13 +138,27 @@ export default function PlayPage() {
   const [importPreview, setImportPreview] = useState<GpImportRow[] | null>(
     null,
   );
+  const [googleApprovedPreview, setGoogleApprovedPreview] =
+    useState<GoogleApprovedPricingPreview | null>(null);
   const [applying, setApplying] = useState(false);
+  const [applyStatus, setApplyStatus] = useState<{
+    title: string;
+    detail: string;
+    events: string[];
+  } | null>(null);
   const [applySummary, setApplySummary] = useState<{
     productLabel: string;
     regionsChanged: number;
     warnings: string[];
+    verified?: boolean;
   } | null>(null);
   const [strategy, setStrategy] = useState<PricingStrategy>("ppp");
+  const [pricingMode, setPricingMode] = useState<"anchor" | "adjust">("anchor");
+  const [anchorUsd, setAnchorUsd] = useState(29.99);
+  const [anchorMaxChangePercent, setAnchorMaxChangePercent] = useState(25);
+  const [applyFullAnchorTarget, setApplyFullAnchorTarget] = useState(false);
+  const [previewMovementCap, setPreviewMovementCap] = useState<number | null>(null);
+  const [anchorLoading, setAnchorLoading] = useState(false);
   const [search, setSearch] = useState("");
 
   // Pro gate + snapshots
@@ -134,10 +167,10 @@ export default function PlayPage() {
   const [snapshotDialog, setSnapshotDialog] = useState(false);
   const [snapRefresh, setSnapRefresh] = useState(0);
 
-  useEffect(() => setHydrated(true), []);
-
   useEffect(() => {
-    if (packages.length === 1) setSelectedPackage(packages[0]);
+    if (packages.length === 1) {
+      queueMicrotask(() => setSelectedPackage(packages[0]));
+    }
   }, [packages]);
 
   const productRefs = useMemo<ProductRef[]>(() => {
@@ -146,6 +179,7 @@ export default function PlayPage() {
       refs.push({
         kind: "iap",
         productId: p.productId,
+        purchaseOptionId: p.purchaseOptionId,
         title: p.title,
       });
     }
@@ -170,7 +204,11 @@ export default function PlayPage() {
   const currentPrices = useMemo<GpPriceRow[]>(() => {
     if (!selectedRef) return [];
     if (selectedRef.kind === "iap") {
-      const product = iaps.find((p) => p.productId === selectedRef.productId);
+      const product = iaps.find(
+        (p) =>
+          p.productId === selectedRef.productId &&
+          p.purchaseOptionId === selectedRef.purchaseOptionId
+      );
       if (!product) return [];
       return product.prices
         .slice()
@@ -237,27 +275,26 @@ export default function PlayPage() {
           params: { pageSize: "100", ...(pageToken ? { pageToken } : {}) },
         });
         for (const p of page.oneTimeProducts ?? []) {
-          // Use the first purchase option (most apps have exactly one).
-          // Prices are decimal-normalized here so downstream code never
-          // touches micros or Money conversion directly.
-          const po = p.purchaseOptions?.[0];
-          const priceRows: GpPriceRow[] = (
-            po?.regionalPricingAndAvailabilityConfigs ?? []
-          )
-            .filter((rc) => rc.price)
-            .map((rc) => ({
-              regionCode: rc.regionCode,
-              currency: rc.price!.currencyCode,
-              price: moneyToDecimal(rc.price!),
-            }));
-          modern.push({
-            legacy: false,
-            productId: p.productId,
-            title: p.listings?.[0]?.title ?? p.productId,
-            prices: priceRows,
-            purchaseOptionId: po?.purchaseOptionId,
-            modernRaw: p,
-          });
+          const options = p.purchaseOptions ?? [];
+          for (const po of options) {
+            const priceRows: GpPriceRow[] = (
+              po.regionalPricingAndAvailabilityConfigs ?? []
+            )
+              .filter((rc) => rc.price)
+              .map((rc) => ({
+                regionCode: rc.regionCode,
+                currency: rc.price!.currencyCode,
+                price: moneyToDecimal(rc.price!),
+              }));
+            modern.push({
+              legacy: false,
+              productId: p.productId,
+              title: p.listings?.[0]?.title ?? p.productId,
+              prices: priceRows,
+              purchaseOptionId: po.purchaseOptionId,
+              modernRaw: p,
+            });
+          }
         }
         pageToken = page.nextPageToken;
       } while (pageToken);
@@ -336,10 +373,14 @@ export default function PlayPage() {
 
   useEffect(() => {
     if (selectedPackage) {
-      setImportPreview(null);
-      setSheetText("");
-      setApplySummary(null);
-      loadProducts();
+      queueMicrotask(() => {
+        setImportPreview(null);
+        setGoogleApprovedPreview(null);
+        setPreviewMovementCap(null);
+        setSheetText("");
+        setApplySummary(null);
+        void loadProducts();
+      });
     }
   }, [selectedPackage, loadProducts]);
 
@@ -364,21 +405,75 @@ export default function PlayPage() {
     URL.revokeObjectURL(url);
   }
 
-  function generatePolicyPreview() {
-    if (currentPrices.length === 0) return;
+  const fetchAuthoritativePrices = useCallback(
+    async (ref: ProductRef): Promise<Map<string, number>> => {
+      if (!gpCredentials) throw new Error("Google Play is not connected.");
+      const result = new Map<string, number>();
+      if (ref.kind === "sub") {
+        const fresh = await gpFetch<GpSubscription>(
+          gpCredentials,
+          `${API}/${selectedPackage}/subscriptions/${ref.productId}`,
+        );
+        const plan = fresh.basePlans?.find((item) => item.basePlanId === ref.basePlanId);
+        for (const row of plan?.regionalConfigs ?? []) {
+          if (row.price) result.set(row.regionCode, Number(moneyToDecimal(row.price)));
+        }
+        return result;
+      }
+
+      const local = iaps.find(
+        (item) =>
+          item.productId === ref.productId &&
+          item.purchaseOptionId === ref.purchaseOptionId
+      );
+      if (local?.legacy) {
+        const fresh = await gpFetch<GpInAppProduct>(
+          gpCredentials,
+          `${API}/${selectedPackage}/inappproducts/${ref.productId}`,
+        );
+        for (const [region, price] of Object.entries(fresh.prices ?? {})) {
+          result.set(region, Number(microsToDecimal(price.priceMicros)));
+        }
+        return result;
+      }
+
+      const fresh = await gpFetch<GpOneTimeProduct>(
+        gpCredentials,
+        `${API}/${selectedPackage}/onetimeproducts/${ref.productId}`,
+      );
+      const option = fresh.purchaseOptions?.find(
+        (item) => item.purchaseOptionId === local?.purchaseOptionId,
+      );
+      for (const row of option?.regionalPricingAndAvailabilityConfigs ?? []) {
+        if (row.price) result.set(row.regionCode, Number(moneyToDecimal(row.price)));
+      }
+      return result;
+    },
+    [gpCredentials, iaps, selectedPackage],
+  );
+
+  function acceptGeneratedPolicy(
+    data: string,
+    extraWarnings: string[] = [],
+  ) {
     setApplySummary(null);
+    setGoogleApprovedPreview(null);
     try {
-      const data = generateControlledPriceCsv(buildCsv(exportableRows()), { strategy, maxChangePercent: 25 });
-      // Drop the result into the sheet text and run preview immediately
       setSheetText(data);
       const { rows, warnings } = parsePriceSheet(data, { codeLength: 2 });
       const preview: GpImportRow[] = [];
-      const warns: string[] = [...warnings];
+      const warns: string[] = [...extraWarnings, ...warnings];
       for (const row of rows) {
         const current = currentByRegion.get(row.territoryId);
         if (!current) {
           warns.push(
             `${row.territoryId}: not in this product's regional pricing — skipped`,
+          );
+          continue;
+        }
+        if (GP_NOT_BILLABLE.has(row.territoryId)) {
+          warns.push(
+            `${row.territoryId}: not billable in Google regions version 2022/02 — skipped`,
           );
           continue;
         }
@@ -394,9 +489,108 @@ export default function PlayPage() {
     } catch (e) { setError(e instanceof Error ? e.message : "Could not generate preview"); }
   }
 
+  async function generateAnchorPreview() {
+    if (!gpCredentials || currentPrices.length === 0 || anchorUsd <= 0) return;
+    setAnchorLoading(true);
+    setError("");
+    setApplySummary(null);
+    try {
+      // Ask Google for each policy band's complete regional grid. Multiplying
+      // a converted local price afterward creates amounts that violate local
+      // pricing patterns (the source of "price for XX must be rounded").
+      const multiplierFor = (regionCode: string) =>
+        regionCode === "US"
+          ? 1
+          : pricingPolicyMultiplier(strategy, regionCode);
+      const multipliers = [
+        ...new Set(currentPrices.map((row) => multiplierFor(row.regionCode))),
+      ];
+      const convertedByMultiplier = new Map(
+        await Promise.all(
+          multipliers.map(async (multiplier) => [
+            multiplier,
+            await gpFetch<GpConvertRegionPricesResponse>(
+              gpCredentials,
+              `${API}/${selectedPackage}/pricing:convertRegionPrices`,
+              {
+                method: "POST",
+                body: {
+                  price: decimalToMoney(anchorUsd * multiplier, "USD"),
+                },
+              },
+            ),
+          ] as const),
+        ),
+      );
+      const current = new Map(currentPrices.map((row) => [row.regionCode, Number(row.price)]));
+      const warnings: string[] = [];
+      const approvedPrices: Record<string, GpMoney> = {};
+      const rows = currentPrices.flatMap((row) => {
+        if (GP_NOT_BILLABLE.has(row.regionCode)) {
+          warnings.push(
+            `${row.regionCode}: not billable in Google regions version 2022/02 — excluded`,
+          );
+          return [];
+        }
+        const multiplier = multiplierFor(row.regionCode);
+        const baseline = convertedByMultiplier
+          .get(multiplier)
+          ?.convertedRegionPrices?.[row.regionCode];
+        if (!baseline?.price) {
+          warnings.push(`${row.regionCode}: Google returned no anchor conversion — kept out of this preview`);
+          return [];
+        }
+        const target = Number(moneyToDecimal(baseline.price));
+        const currentPrice = current.get(row.regionCode);
+        const stagedTarget = applyFullAnchorTarget
+          ? target
+          : stagePriceTowardTarget(
+              currentPrice ?? null,
+              target,
+              anchorMaxChangePercent
+            );
+        if (Math.abs(stagedTarget - target) > 0.000001) {
+          warnings.push(
+            `${row.regionCode}: final policy target ${target} ${baseline.price.currencyCode}; staged to ${stagedTarget} by the ${anchorMaxChangePercent}% movement cap`,
+          );
+        } else {
+          approvedPrices[row.regionCode] = baseline.price;
+        }
+        return [{
+          territoryId: row.regionCode,
+          currency: baseline.price.currencyCode,
+          customerPrice: String(Math.round(stagedTarget * 1_000_000) / 1_000_000),
+        }];
+      });
+      setPreviewMovementCap(
+        applyFullAnchorTarget ? null : anchorMaxChangePercent
+      );
+      acceptGeneratedPolicy(buildCsv(rows), warnings);
+      const regionsVersions = new Set(
+        [...convertedByMultiplier.values()]
+          .map((response) => response.regionVersion?.version)
+          .filter((version): version is string => Boolean(version)),
+      );
+      if (regionsVersions.size !== 1) {
+        throw new Error(
+          "Google returned inconsistent region versions while generating the preview. Nothing was applied; regenerate and retry.",
+        );
+      }
+      setGoogleApprovedPreview({
+        prices: approvedPrices,
+        regionsVersion: [...regionsVersions][0],
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not build Google anchor preview");
+    } finally {
+      setAnchorLoading(false);
+    }
+  }
+
   function previewImport() {
     setError("");
     setApplySummary(null);
+    setGoogleApprovedPreview(null);
     const { rows, warnings } = parsePriceSheet(sheetText, { codeLength: 2 });
     const preview: GpImportRow[] = [];
     for (const row of rows) {
@@ -404,6 +598,12 @@ export default function PlayPage() {
       if (!current) {
         warnings.push(
           `${row.territoryId}: not in this product's regional pricing — skipped. Add it in Play Console first (Monetize → select product → Set prices → add region), then re-import.`,
+        );
+        continue;
+      }
+      if (GP_NOT_BILLABLE.has(row.territoryId)) {
+        warnings.push(
+          `${row.territoryId}: not billable in Google regions version 2022/02 — skipped`,
         );
         continue;
       }
@@ -420,15 +620,249 @@ export default function PlayPage() {
 
   /** Apply a map of regionCode → new decimal price to the selected product. */
   const applyChanges = useCallback(
-    async (changes: Map<string, number>) => {
+    async (
+      changes: Map<string, number>,
+      approvedPreview: GoogleApprovedPricingPreview | null = null,
+      movementCap: number | null = null,
+    ) => {
       if (!gpCredentials || !selectedRef || changes.size === 0) return;
+      let storeAccepted = false;
+      let liveVerified = false;
+      const reportApplyStatus = (
+        title: string,
+        detail: string,
+        event?: string,
+      ) => {
+        setApplyStatus((current) => ({
+          title,
+          detail,
+          events: event
+            ? [...(current?.events ?? []), event]
+            : current?.events ?? [],
+        }));
+      };
       setApplying(true);
       setError("");
       setApplySummary(null);
+      setApplyStatus({
+        title: "Preparing the Google Play update…",
+        detail: "No prices have been sent yet. Reading the latest product configuration.",
+        events: [],
+      });
       try {
+        const applyWarnings = [...importWarnings];
+        // convertRegionPrices tells us which regions version its currencies and
+        // price patterns belong to. The subsequent PATCH must use that exact
+        // version; hard-coding 2022/02 made Google's current BG/EUR conversion
+        // collide with a PATCH that expected the older BG/BGN mapping.
+        let pricingRegionsVersion =
+          approvedPreview?.regionsVersion ?? "2022/02";
+        const reviewedApprovedPrices = matchingApprovedRegionalPrices(
+          changes,
+          approvedPreview,
+        );
+        const enforceFinalMovementCap = () => {
+          if (movementCap === null) return;
+          const violations = findMovementCapViolations(
+            new Map(
+              [...currentByRegion].map(([region, row]) => [
+                region,
+                Number(row.price),
+              ])
+            ),
+            changes,
+            movementCap
+          );
+          if (violations.length > 0) {
+            throw new Error(movementCapErrorMessage(violations, movementCap));
+          }
+        };
+        for (const regionCode of [...changes.keys()]) {
+          if (!GP_NOT_BILLABLE.has(regionCode)) continue;
+          changes.delete(regionCode);
+          applyWarnings.push(
+            `${regionCode}: not billable in Google regions version 2022/02 — excluded`,
+          );
+        }
+        if (changes.size === 0) {
+          setApplySummary({
+            productLabel: refLabel(selectedRef),
+            regionsChanged: 0,
+            warnings: applyWarnings,
+          });
+          return;
+        }
+
+        /**
+         * Google validates country-specific billable price patterns in addition
+         * to ISO currency precision. When it reports "must be rounded", use
+         * convertRegionPrices as the source of truth and converge on the
+         * closest official regional amount instead of inventing a local rule.
+         */
+        const resolveBillableRegionalPrice = async (
+          regionCode: string,
+          targetLocalPrice: number,
+        ): Promise<GpMoney> => {
+          if (!Number.isFinite(targetLocalPrice) || targetLocalPrice <= 0) {
+            throw new Error(`${regionCode}: cannot round an invalid target price.`);
+          }
+
+          const clampAnchor = (value: number) =>
+            Math.max(0.05, Math.min(1000, value));
+          let usdAnchor = clampAnchor(changes.get("US") ?? targetLocalPrice);
+          let best: { price: GpMoney; distance: number } | null = null;
+
+          // The conversion is close to linear before Google's market rounding.
+          // Two or three ratio corrections normally land on the closest
+          // accepted price pattern for the requested region.
+          for (let attempt = 0; attempt < 4; attempt++) {
+            const converted = await gpFetch<GpConvertRegionPricesResponse>(
+              gpCredentials,
+              `${API}/${selectedPackage}/pricing:convertRegionPrices`,
+              {
+                method: "POST",
+                body: { price: decimalToMoney(usdAnchor, "USD") },
+              },
+            );
+            pricingRegionsVersion =
+              converted.regionVersion?.version ?? pricingRegionsVersion;
+            const regional = converted.convertedRegionPrices?.[regionCode]?.price;
+            if (!regional) {
+              throw new Error(
+                `${regionCode}: Google returned no billable regional price. Nothing was changed.`,
+              );
+            }
+            const candidate = Number(moneyToDecimal(regional));
+            if (!Number.isFinite(candidate) || candidate <= 0) {
+              throw new Error(
+                `${regionCode}: Google returned an invalid converted price. Nothing was changed.`,
+              );
+            }
+            const distance = Math.abs(candidate - targetLocalPrice);
+            if (!best || distance < best.distance) {
+              best = { price: regional, distance };
+            }
+            if (distance <= Math.max(0.000001, targetLocalPrice * 0.000001)) {
+              break;
+            }
+            const nextAnchor = clampAnchor(
+              usdAnchor * (targetLocalPrice / candidate),
+            );
+            if (Math.abs(nextAnchor - usdAnchor) < 0.000001) break;
+            usdAnchor = nextAnchor;
+          }
+
+          if (!best) {
+            throw new Error(
+              `${regionCode}: Google could not produce a billable price. Nothing was changed.`,
+            );
+          }
+          return best.price;
+        };
+
+        /**
+         * Normalize all requested regional prices before the first write.
+         * Google otherwise reports only one invalid regional price per PATCH,
+         * which turns a 100-country update into a long reject/retry loop.
+         *
+         * One reference conversion lets us infer which targets share the same
+         * approximate USD anchor. Each group then needs one official Google
+         * conversion, regardless of how many countries it contains.
+         */
+        const normalizeRegionalTargets = async (
+          targets: Map<string, number>,
+        ): Promise<Record<string, GpMoney>> => {
+          if (targets.size === 0) return {};
+          const clampAnchor = (value: number) =>
+            Math.max(0.05, Math.min(1000, value));
+          const referenceAnchorUsd = clampAnchor(
+            targets.get("US") ??
+              Number(currentByRegion.get("US")?.price ?? 10),
+          );
+          reportApplyStatus(
+            "Google is normalizing regional prices…",
+            `No write has been sent. StoreOps is converting ${targets.size} requested prices to Google-approved local price patterns.`,
+          );
+          const reference = await gpFetch<GpConvertRegionPricesResponse>(
+            gpCredentials,
+            `${API}/${selectedPackage}/pricing:convertRegionPrices`,
+            {
+              method: "POST",
+              body: { price: decimalToMoney(referenceAnchorUsd, "USD") },
+            },
+          );
+          pricingRegionsVersion =
+            reference.regionVersion?.version ?? pricingRegionsVersion;
+          const groups = groupRegionalAnchorEstimates(
+            referenceAnchorUsd,
+            [...targets].flatMap(([regionCode, targetLocalPrice]) => {
+              const referencePrice =
+                reference.convertedRegionPrices?.[regionCode]?.price;
+              if (!referencePrice) return [];
+              return [
+                {
+                  regionCode,
+                  targetLocalPrice,
+                  referenceLocalPrice: Number(moneyToDecimal(referencePrice)),
+                },
+              ];
+            }),
+          );
+          const normalized: Record<string, GpMoney> = {};
+
+          // Keep API pressure bounded while still avoiding a slow serial pass.
+          for (let offset = 0; offset < groups.length; offset += 5) {
+            const batch = groups.slice(offset, offset + 5);
+            const results = await Promise.all(
+              batch.map(async (group) => ({
+                group,
+                converted:
+                  Math.abs(group.anchorUsd - referenceAnchorUsd) < 0.000001
+                    ? reference
+                    : await gpFetch<GpConvertRegionPricesResponse>(
+                        gpCredentials,
+                        `${API}/${selectedPackage}/pricing:convertRegionPrices`,
+                        {
+                          method: "POST",
+                          body: {
+                            price: decimalToMoney(group.anchorUsd, "USD"),
+                          },
+                        },
+                      ),
+              })),
+            );
+            for (const { group, converted } of results) {
+              for (const member of group.members) {
+                const official =
+                  converted.convertedRegionPrices?.[member.regionCode]?.price;
+                if (!official) continue;
+                normalized[member.regionCode] = official;
+                const officialValue = Number(moneyToDecimal(official));
+                changes.set(member.regionCode, officialValue);
+                if (
+                  Math.abs(officialValue - member.targetLocalPrice) >
+                  Math.max(0.000001, member.targetLocalPrice * 0.000001)
+                ) {
+                  applyWarnings.push(
+                    `${member.regionCode}: requested ${member.targetLocalPrice} → Google-approved ${officialValue} ${official.currencyCode}`,
+                  );
+                }
+              }
+            }
+          }
+          reportApplyStatus(
+            "Regional prices normalized — ready to write",
+            `Google supplied valid local price patterns for ${Object.keys(normalized).length} of ${targets.size} requested regions.`,
+            `${groups.length} conversion ${groups.length === 1 ? "group" : "groups"} normalized before the write`,
+          );
+          return normalized;
+        };
+
         if (selectedRef.kind === "iap") {
           const product = iaps.find(
-            (p) => p.productId === selectedRef.productId,
+            (p) =>
+              p.productId === selectedRef.productId &&
+              p.purchaseOptionId === selectedRef.purchaseOptionId,
           );
           if (!product)
             throw new Error("Product not loaded — refresh and retry.");
@@ -439,7 +873,12 @@ export default function PlayPage() {
               throw new Error(
                 "Legacy product payload missing — refresh and retry.",
               );
-            const prices = { ...(product.legacyRaw.prices ?? {}) };
+            const freshLegacy = await gpFetch<GpInAppProduct>(
+              gpCredentials,
+              `${API}/${selectedPackage}/inappproducts/${selectedRef.productId}`,
+            );
+            enforceFinalMovementCap();
+            const prices = { ...(freshLegacy.prices ?? {}) };
             for (const [region, price] of changes) {
               const currency = currentByRegion.get(region)?.currency;
               if (!currency) continue;
@@ -454,9 +893,10 @@ export default function PlayPage() {
               {
                 method: "PUT",
                 params: { autoConvertMissingPrices: "true" },
-                body: { ...product.legacyRaw, prices },
+                body: { ...freshLegacy, prices },
               },
             );
+            storeAccepted = true;
           } else {
             // Modern one-time products path. Apps migrated to the new Publishing
             // API reject the entire legacy /inappproducts namespace — list, get,
@@ -469,9 +909,11 @@ export default function PlayPage() {
             if (!product.modernRaw || !product.purchaseOptionId)
               throw new Error("Product payload missing — refresh and retry.");
 
-            const modern: GpOneTimeProduct = JSON.parse(
-              JSON.stringify(product.modernRaw),
+            const freshModern = await gpFetch<GpOneTimeProduct>(
+              gpCredentials,
+              `${API}/${selectedPackage}/onetimeproducts/${selectedRef.productId}`,
             );
+            const modern: GpOneTimeProduct = JSON.parse(JSON.stringify(freshModern));
             const po = (modern.purchaseOptions ?? []).find(
               (p) => p.purchaseOptionId === product.purchaseOptionId,
             );
@@ -481,19 +923,57 @@ export default function PlayPage() {
             const CURRENCY_ERR_OTP =
               /Invalid currency for region code (\w+).*Expected (\w+) but got/;
             const NOT_BILLABLE_OTP = /Region code (\w+) is not billable/;
+            const PRICE_ROUNDING_OTP = /price for (\w+) must be rounded/i;
             const otpCorrections: Record<string, string> = {};
             const otpNotBillable = new Set<string>([...GP_NOT_BILLABLE]);
+            const configuredRegions = new Set(
+              (po.regionalPricingAndAvailabilityConfigs ?? []).map(
+                (config) => config.regionCode,
+              ),
+            );
+            const otpRoundedPrices: Record<string, GpMoney> = {
+              ...reviewedApprovedPrices,
+              ...(await normalizeRegionalTargets(
+                new Map(
+                  [...changes].filter(
+                    ([regionCode]) =>
+                      configuredRegions.has(regionCode) &&
+                      !reviewedApprovedPrices[regionCode],
+                  ),
+                ),
+              )),
+            };
+            enforceFinalMovementCap();
 
-            for (let attempt = 0; attempt < 10; attempt++) {
+            let writeSucceeded = false;
+            const maxCorrectionAttempts =
+              (po.regionalPricingAndAvailabilityConfigs?.length ?? 0) + 10;
+            for (let attempt = 0; attempt < maxCorrectionAttempts; attempt++) {
               po.regionalPricingAndAvailabilityConfigs = (
                 po.regionalPricingAndAvailabilityConfigs ?? []
               )
                 .filter((rc) => !otpNotBillable.has(rc.regionCode))
                 .map((rc) => {
+                  const roundedPrice = otpRoundedPrices[rc.regionCode];
                   const storedCurrency = rc.price?.currencyCode ?? "USD";
                   const correctedCurrency =
                     otpCorrections[rc.regionCode] ??
-                    requiredCurrency(rc.regionCode, storedCurrency);
+                    requiredCurrency(
+                      rc.regionCode,
+                      roundedPrice?.currencyCode ?? storedCurrency,
+                    );
+                  if (roundedPrice) {
+                    return {
+                      ...rc,
+                      price:
+                        correctedCurrency === roundedPrice.currencyCode
+                          ? roundedPrice
+                          : {
+                              ...roundedPrice,
+                              currencyCode: correctedCurrency,
+                            },
+                    };
+                  }
                   const next = changes.get(rc.regionCode);
                   if (next !== undefined) {
                     return {
@@ -514,6 +994,10 @@ export default function PlayPage() {
                 });
 
               try {
+                // A Google-required rounding correction can change `changes`
+                // between attempts. Re-check the exact payload immediately
+                // before every write, not only before the first attempt.
+                enforceFinalMovementCap();
                 await gpFetch(
                   gpCredentials,
                   `${API}/${selectedPackage}/onetimeproducts/${selectedRef.productId}`,
@@ -521,25 +1005,73 @@ export default function PlayPage() {
                     method: "PATCH",
                     params: {
                       updateMask: "purchaseOptions",
-                      "regionsVersion.version": "2022/02",
+                      "regionsVersion.version": pricingRegionsVersion,
                     },
                     body: modern,
                   },
                 );
+                storeAccepted = true;
+                writeSucceeded = true;
                 break;
               } catch (e) {
                 if (!(e instanceof GpError)) throw e;
                 const msg = e.message;
                 const currMatch = msg.match(CURRENCY_ERR_OTP);
                 const billMatch = msg.match(NOT_BILLABLE_OTP);
+                const roundingMatch = msg.match(PRICE_ROUNDING_OTP);
                 if (currMatch) {
+                  if (otpCorrections[currMatch[1]] === currMatch[2]) {
+                    throw new Error(
+                      `${currMatch[1]} remained on the wrong currency after StoreOps corrected it to ${currMatch[2]}. Nothing changed; refresh before retrying.`,
+                    );
+                  }
                   otpCorrections[currMatch[1]] = currMatch[2];
+                  reportApplyStatus(
+                    "Google rejected the draft — correcting it…",
+                    "Nothing changed. StoreOps is rebuilding the request with Google’s required currency.",
+                    `${currMatch[1]} currency corrected to ${currMatch[2]}`,
+                  );
                 } else if (billMatch) {
                   otpNotBillable.add(billMatch[1]);
+                  changes.delete(billMatch[1]);
+                  reportApplyStatus(
+                    "Google rejected the draft — correcting it…",
+                    "Nothing changed. StoreOps is excluding a region Google no longer bills.",
+                    `${billMatch[1]} excluded as non-billable`,
+                  );
+                } else if (roundingMatch) {
+                  const regionCode = roundingMatch[1];
+                  if (otpRoundedPrices[regionCode]) throw e;
+                  const config = po.regionalPricingAndAvailabilityConfigs?.find(
+                    (item) => item.regionCode === regionCode,
+                  );
+                  const target =
+                    changes.get(regionCode) ??
+                    (config?.price ? Number(moneyToDecimal(config.price)) : NaN);
+                  const rounded = await resolveBillableRegionalPrice(
+                    regionCode,
+                    target,
+                  );
+                  otpRoundedPrices[regionCode] = rounded;
+                  const roundedValue = Number(moneyToDecimal(rounded));
+                  changes.set(regionCode, roundedValue);
+                  applyWarnings.push(
+                    `${regionCode}: Google-required billable rounding ${target} → ${roundedValue} ${rounded.currencyCode}`,
+                  );
+                  reportApplyStatus(
+                    "Google rejected the draft — correcting it…",
+                    "Nothing changed. StoreOps found Google’s nearest accepted regional price and is retrying.",
+                    `${regionCode} rounded ${target} → ${roundedValue} ${rounded.currencyCode}`,
+                  );
                 } else {
                   throw e;
                 }
               }
+            }
+            if (!writeSucceeded) {
+              throw new Error(
+                `Google did not accept the one-time product after ${maxCorrectionAttempts} correction attempts. No success was recorded; refresh and review the product configuration.`,
+              );
             }
           }
         } else {
@@ -555,6 +1087,7 @@ export default function PlayPage() {
           // don't cost extra round-trips.
           const NOT_BILLABLE = /Region code (\w+) is not billable/;
           const PRICE_RANGE = /Price for (\w+) must be between/;
+          const PRICE_ROUNDING = /price for (\w+) must be rounded/i;
           const CURRENCY_ERR =
             /Invalid currency for region code (\w+).*Expected (\w+) but got/;
           const CONFIGS_REMOVED =
@@ -562,13 +1095,40 @@ export default function PlayPage() {
 
           // Regions excluded from payload — only truly "not billable" ones.
           // Google allows removing these; it rejects removing priced regions.
-          const notBillable = new Set<string>();
-          // Regions that had a price-range error — keep in payload at $0.99.
-          const priceResets = new Map<string, number>();
+          const notBillable = new Set<string>([...GP_NOT_BILLABLE]);
           // Runtime currency overrides learned from API errors (fallback if
           // convertRegionPrices didn't cover a region).
           const runtimeCorrections: Record<string, string> = {};
+          const roundedPrices: Record<string, GpMoney> = {};
           const allWarnings: string[] = [];
+          const freshSubscription = await gpFetch<GpSubscription>(
+            gpCredentials,
+            `${API}/${selectedPackage}/subscriptions/${selectedRef.productId}`,
+          );
+          const originalPlan = freshSubscription.basePlans?.find(
+            (plan) => plan.basePlanId === selectedRef.basePlanId,
+          );
+          if (!originalPlan)
+            throw new Error("Base plan not found — refresh and retry.");
+          const configuredRegions = new Set(
+            (originalPlan.regionalConfigs ?? []).map(
+              (config) => config.regionCode,
+            ),
+          );
+          Object.assign(
+            roundedPrices,
+            reviewedApprovedPrices,
+            await normalizeRegionalTargets(
+              new Map(
+                [...changes].filter(
+                  ([regionCode]) =>
+                    configuredRegions.has(regionCode) &&
+                    !reviewedApprovedPrices[regionCode],
+                ),
+              ),
+            ),
+          );
+          enforceFinalMovementCap();
 
           const correctCurrency = (
             regionCode: string,
@@ -577,8 +1137,13 @@ export default function PlayPage() {
             runtimeCorrections[regionCode] ??
             requiredCurrency(regionCode, storedCurrency);
 
-          for (let attempt = 0; attempt < 20; attempt++) {
-            const updated: GpSubscription = JSON.parse(JSON.stringify(sub));
+          let writeSucceeded = false;
+          const maxCorrectionAttempts =
+            (originalPlan.regionalConfigs?.length ?? 0) + 10;
+          for (let attempt = 0; attempt < maxCorrectionAttempts; attempt++) {
+            const updated: GpSubscription = JSON.parse(
+              JSON.stringify(freshSubscription),
+            );
             const plan = updated.basePlans?.find(
               (b) => b.basePlanId === selectedRef.basePlanId,
             );
@@ -589,13 +1154,20 @@ export default function PlayPage() {
               .filter((rc) => !notBillable.has(rc.regionCode))
               .map((rc) => {
                 if (!rc.price) return rc;
+                const roundedPrice = roundedPrices[rc.regionCode];
                 const correct = correctCurrency(
                   rc.regionCode,
-                  rc.price.currencyCode,
+                  roundedPrice?.currencyCode ?? rc.price.currencyCode,
                 );
-                const fallback = priceResets.get(rc.regionCode);
-                if (fallback !== undefined)
-                  return { ...rc, price: decimalToMoney(fallback, correct) };
+                if (roundedPrice) {
+                  return {
+                    ...rc,
+                    price:
+                      correct === roundedPrice.currencyCode
+                        ? roundedPrice
+                        : { ...roundedPrice, currencyCode: correct },
+                  };
+                }
                 const next = changes.get(rc.regionCode);
                 if (next !== undefined)
                   return { ...rc, price: decimalToMoney(next, correct) };
@@ -605,6 +1177,9 @@ export default function PlayPage() {
               });
 
             try {
+              // Keep the movement cap as a write-time invariant even after a
+              // rejected draft teaches us a different billable price pattern.
+              enforceFinalMovementCap();
               await gpFetch(
                 gpCredentials,
                 `${API}/${selectedPackage}/subscriptions/${selectedRef.productId}`,
@@ -612,11 +1187,13 @@ export default function PlayPage() {
                   method: "PATCH",
                   params: {
                     updateMask: "basePlans",
-                    "regionsVersion.version": "2022/02",
+                    "regionsVersion.version": pricingRegionsVersion,
                   },
                   body: updated,
                 },
               );
+              storeAccepted = true;
+              writeSucceeded = true;
               break; // success
             } catch (e) {
               if (!(e instanceof GpError)) throw e;
@@ -625,9 +1202,19 @@ export default function PlayPage() {
               // Learn from the error and retry once.
               const currMatch = e.message.match(CURRENCY_ERR);
               if (currMatch) {
+                if (runtimeCorrections[currMatch[1]] === currMatch[2]) {
+                  throw new Error(
+                    `${currMatch[1]} remained on the wrong currency after StoreOps corrected it to ${currMatch[2]}. Nothing changed; refresh before retrying.`,
+                  );
+                }
                 runtimeCorrections[currMatch[1]] = currMatch[2];
                 allWarnings.push(
                   `Auto-corrected currency: ${currMatch[1]} → ${currMatch[2]}`,
+                );
+                reportApplyStatus(
+                  "Google rejected the draft — correcting it…",
+                  "Nothing changed. StoreOps is rebuilding the request with Google’s required currency.",
+                  `${currMatch[1]} currency corrected to ${currMatch[2]}`,
                 );
                 continue;
               }
@@ -636,62 +1223,129 @@ export default function PlayPage() {
               const nbMatch = e.message.match(NOT_BILLABLE);
               if (nbMatch) {
                 notBillable.add(nbMatch[1]);
+                changes.delete(nbMatch[1]);
                 allWarnings.push(
-                  `⚠ ${nbMatch[1]}: not billable in regions version 2022/02 — excluded`,
+                  `⚠ ${nbMatch[1]}: not billable in regions version ${pricingRegionsVersion} — excluded`,
+                );
+                reportApplyStatus(
+                  "Google rejected the draft — correcting it…",
+                  "Nothing changed. StoreOps is excluding a region Google no longer bills.",
+                  `${nbMatch[1]} excluded as non-billable`,
                 );
                 continue;
               }
 
-              // Price out of range — must stay in payload; use $0.99 fallback.
+              // Never invent a fallback production price. Google includes the
+              // valid range in this error; return it to the operator unchanged.
               const prMatch = e.message.match(PRICE_RANGE);
               if (prMatch) {
-                priceResets.set(prMatch[1], 0.99);
+                throw new Error(
+                  `${prMatch[1]} was rejected because the price is outside Google's allowed local range. Nothing was substituted. Review that row and apply again. ${e.message}`,
+                );
+              }
+
+              const roundingMatch = e.message.match(PRICE_ROUNDING);
+              if (roundingMatch) {
+                const regionCode = roundingMatch[1];
+                if (roundedPrices[regionCode]) throw e;
+                const originalConfig = freshSubscription.basePlans
+                  ?.find((item) => item.basePlanId === selectedRef.basePlanId)
+                  ?.regionalConfigs?.find(
+                    (item) => item.regionCode === regionCode,
+                  );
+                const target =
+                  changes.get(regionCode) ??
+                  (originalConfig?.price
+                    ? Number(moneyToDecimal(originalConfig.price))
+                    : NaN);
+                const rounded = await resolveBillableRegionalPrice(
+                  regionCode,
+                  target,
+                );
+                roundedPrices[regionCode] = rounded;
+                const roundedValue = Number(moneyToDecimal(rounded));
+                changes.set(regionCode, roundedValue);
                 allWarnings.push(
-                  `⚠ ${prMatch[1]}: price out of allowed range — reset to $0.99. Set the correct price in Play Console.`,
+                  `${regionCode}: Google-required billable rounding ${target} → ${roundedValue} ${rounded.currencyCode}`,
+                );
+                reportApplyStatus(
+                  "Google rejected the draft — correcting it…",
+                  "Nothing changed. StoreOps found Google’s nearest accepted regional price and is retrying.",
+                  `${regionCode} rounded ${target} → ${roundedValue} ${rounded.currencyCode}`,
                 );
                 continue;
               }
 
-              // We excluded a priced region — undo the exclusion, use $0.99 instead.
+              // A priced region cannot be silently removed or replaced.
               const removedMatch = e.message.match(CONFIGS_REMOVED);
               if (removedMatch) {
-                for (const r of removedMatch[1]
-                  .split(/,\s*/)
-                  .map((s) => s.trim())
-                  .filter(Boolean)) {
-                  notBillable.delete(r);
-                  priceResets.set(r, 0.99);
-                  allWarnings.push(
-                    `⚠ ${r}: cannot be removed — reset to $0.99. Fix in Play Console.`,
-                  );
-                }
-                continue;
+                throw new Error(
+                  `Google refused to remove priced regions (${removedMatch[1]}). No replacement price was invented. Refresh the product and review those regions.`,
+                );
               }
 
               throw e;
             }
           }
 
+          if (!writeSucceeded) {
+            throw new Error(
+              `Google did not accept the subscription after ${maxCorrectionAttempts} correction attempts. No success was recorded; refresh and review the base plan.`,
+            );
+          }
+
           if (allWarnings.length > 0) {
+            applyWarnings.push(...allWarnings);
             setImportWarnings((prev) => [...prev, ...allWarnings]);
           }
         }
 
+        reportApplyStatus(
+          "Google accepted the pricing update",
+          "The write succeeded. StoreOps is now reading the live grid to verify every requested region.",
+          "Write accepted by Google Play",
+        );
+        const authoritative = await fetchAuthoritativePrices(selectedRef);
+        const mismatches = findPriceMismatches(changes, authoritative);
+        if (mismatches.length > 0) {
+          throw new Error(
+            `Google returned success, but verification did not match for ${mismatches
+              .slice(0, 5)
+              .map((item) => item.region)
+              .join(", ")}${mismatches.length > 5 ? "…" : ""}. StoreOps will not report this apply as complete. Refresh and review the live grid.`,
+          );
+        }
+        liveVerified = true;
+        reportApplyStatus(
+          "Live prices verified",
+          "Google’s live regional grid matches the accepted update.",
+          "Live grid verification passed",
+        );
+
         setApplySummary({
           productLabel: refLabel(selectedRef),
           regionsChanged: changes.size,
-          warnings: importWarnings,
+          warnings: applyWarnings,
+          verified: true,
         });
         setImportPreview(null);
+        setGoogleApprovedPreview(null);
         setSheetText("");
         await loadProducts();
         setSelectedRefKey(refKey(selectedRef));
       } catch (e) {
+        const reason =
+          e instanceof GpError || e instanceof Error ? e.message : String(e);
         setError(
-          e instanceof GpError || e instanceof Error ? e.message : String(e),
+          !storeAccepted
+            ? `Update stopped before Google accepted a pricing write. The rejected attempts changed nothing. Reason: ${reason}`
+            : liveVerified
+              ? `Google accepted and verified the prices, but StoreOps could not refresh the screen afterward. Reload to read the live grid. Reason: ${reason}`
+              : `Google accepted the pricing write, but StoreOps could not verify the complete live grid. Some prices may have changed. Refresh before retrying. Reason: ${reason}`,
         );
       } finally {
         setApplying(false);
+        setApplyStatus(null);
       }
     },
     [
@@ -703,10 +1357,11 @@ export default function PlayPage() {
       subs,
       loadProducts,
       importWarnings,
+      fetchAuthoritativePrices,
     ],
   );
 
-  async function applyImport(withSnapshot = true, snapshotName?: string) {
+  async function applyImport(snapshotName?: string) {
     if (!importPreview) return;
     setSnapshotDialog(false);
     const changes = new Map(
@@ -714,8 +1369,8 @@ export default function PlayPage() {
         .filter((r) => r.newPrice !== r.currentPrice)
         .map((r) => [r.regionCode, Number(r.newPrice)] as const),
     );
-    if (withSnapshot) {
-      takeSnapshot({
+    try {
+      await takeRequiredSnapshot({
         appId: selectedPackage,
         scope: snapshotScope,
         label: snapshotName || `Before import · ${changes.size} regions`,
@@ -726,9 +1381,12 @@ export default function PlayPage() {
           currency: r.currency,
         })),
       });
-      setSnapRefresh((n) => n + 1);
+    } catch (snapshotError) {
+      setError(snapshotError instanceof Error ? snapshotError.message : String(snapshotError));
+      return;
     }
-    await applyChanges(changes);
+    setSnapRefresh((n) => n + 1);
+    await applyChanges(changes, googleApprovedPreview, previewMovementCap);
   }
 
   async function restoreSnapshot(snapshot: PriceSnapshot) {
@@ -752,34 +1410,44 @@ export default function PlayPage() {
       });
       return;
     }
-    takeSnapshot({
-      appId: selectedPackage,
-      scope: snapshotScope,
-      label: `Before restoring · ${snapshot.label}`,
-      rows: currentPrices.map((row) => ({
-        territoryId: row.regionCode,
-        pricePointId: "",
-        customerPrice: row.price,
-        currency: row.currency,
-      })),
-    });
+    try {
+      await takeRequiredSnapshot({
+        appId: selectedPackage,
+        scope: snapshotScope,
+        label: `Before restoring · ${snapshot.label}`,
+        rows: currentPrices.map((row) => ({
+          territoryId: row.regionCode,
+          pricePointId: "",
+          customerPrice: row.price,
+          currency: row.currency,
+        })),
+      });
+    } catch (snapshotError) {
+      setError(snapshotError instanceof Error ? snapshotError.message : String(snapshotError));
+      return;
+    }
     setSnapRefresh((value) => value + 1);
     await applyChanges(changes);
   }
 
   function saveNamedSnapshot(label: string) {
     if (!selectedRef) return;
-    takeSnapshot({
-      appId: selectedPackage,
-      scope: snapshotScope,
-      label,
-      rows: currentPrices.map((r) => ({
-        territoryId: r.regionCode,
-        pricePointId: "",
-        customerPrice: r.price,
-        currency: r.currency,
-      })),
-    });
+    try {
+      takeSnapshot({
+        appId: selectedPackage,
+        scope: snapshotScope,
+        label,
+        rows: currentPrices.map((r) => ({
+          territoryId: r.regionCode,
+          pricePointId: "",
+          customerPrice: r.price,
+          currency: r.currency,
+        })),
+      });
+    } catch (snapshotError) {
+      setError(snapshotError instanceof Error ? snapshotError.message : String(snapshotError));
+      return;
+    }
     setSnapRefresh((n) => n + 1);
   }
 
@@ -847,8 +1515,12 @@ export default function PlayPage() {
 
         {applying && (
           <UpdateStatus
-            title="Updating Google Play pricing…"
-            detail="Your regional price configuration is being sent to Google Play. Keep this page open until it finishes."
+            title={applyStatus?.title ?? "Updating Google Play pricing…"}
+            detail={
+              applyStatus?.detail ??
+              "Your regional price configuration is being sent to Google Play. Keep this page open until it finishes."
+            }
+            events={applyStatus?.events}
           />
         )}
 
@@ -857,6 +1529,7 @@ export default function PlayPage() {
             productLabel={applySummary.productLabel}
             regionsChanged={applySummary.regionsChanged}
             warnings={applySummary.warnings}
+            verified={applySummary.verified}
             onClose={() => setApplySummary(null)}
           />
         )}
@@ -871,7 +1544,7 @@ export default function PlayPage() {
               <strong className="text-zinc-200">
                 non-extractable browser key
               </strong>{" "}
-              — it signs short-lived tokens locally and can never be read back.
+              — its raw key material cannot be exported after import.
               It never touches our servers.
             </p>
             <label className="block">
@@ -1003,6 +1676,7 @@ export default function PlayPage() {
                     onChange={(e) => {
                       setSelectedRefKey(e.target.value);
                       setImportPreview(null);
+                      setGoogleApprovedPreview(null);
                       setSheetText("");
                       setApplySummary(null);
                     }}
@@ -1027,7 +1701,7 @@ export default function PlayPage() {
                     <h2 className="font-semibold">
                       Import price sheet{" "}
                       <span className="text-zinc-500 font-normal text-sm">
-                        CSV from any AI or spreadsheet
+                        Controlled policy or spreadsheet
                       </span>
                     </h2>
                     <div className="flex gap-2">
@@ -1041,53 +1715,114 @@ export default function PlayPage() {
                     </div>
                   </div>
 
-                  {/* Controlled policy picker */}
-                  <div className="flex items-center gap-2 flex-wrap mb-3">
-                    <span className="text-xs text-zinc-500 shrink-0">
-                      Policy:
-                    </span>
-                    {STRATEGIES.map((s) => (
-                      <button
-                        key={s.key}
-                        onClick={() => setStrategy(s.key)}
-                        title={s.tagline}
-                        className={`text-xs rounded-md px-2.5 py-1 border transition ${
-                          strategy === s.key
-                            ? "bg-emerald-900/60 border-emerald-700 text-emerald-300"
-                            : "border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
-                        }`}
-                      >
-                        {s.emoji} {s.label}
-                        {s.star && (
-                          <span className="ml-1 text-amber-400 text-[10px]">
-                            ★
+                  <div className="mb-4 flex gap-2 border-b border-zinc-800 pb-3">
+                    <button
+                      onClick={() => setPricingMode("anchor")}
+                      className={`rounded-md px-3 py-1.5 text-xs transition ${pricingMode === "anchor" ? "bg-emerald-950 text-emerald-300" : "text-zinc-500 hover:text-zinc-200"}`}
+                    >
+                      New worldwide anchor
+                    </button>
+                    <button
+                      onClick={() => setPricingMode("adjust")}
+                      className={`rounded-md px-3 py-1.5 text-xs transition ${pricingMode === "adjust" ? "bg-emerald-950 text-emerald-300" : "text-zinc-500 hover:text-zinc-200"}`}
+                    >
+                      Adjust current grid
+                    </button>
+                  </div>
+
+                  {pricingMode === "anchor" ? (
+                    <div className="mb-4">
+                      <p className="mb-3 text-xs leading-relaxed text-zinc-500">
+                        Google&apos;s live conversion engine builds the baseline from one USD price. Your market policy and movement cap are applied only after Google returns valid local currencies.
+                      </p>
+                      <div className="mb-3 grid gap-3 sm:grid-cols-2">
+                        <label className="text-xs text-zinc-400">
+                          <span className="mb-1 block">USA anchor</span>
+                          <span className="flex items-center gap-2">
+                            <span className="text-zinc-500">$</span>
+                            <input
+                              type="number"
+                              min="0.01"
+                              step="0.01"
+                              value={anchorUsd}
+                              onChange={(event) => setAnchorUsd(Math.max(0.01, Number(event.target.value) || 0.01))}
+                              className="w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100 focus:border-emerald-500 focus:outline-none"
+                            />
                           </span>
-                        )}
+                        </label>
+                        <label className="text-xs text-zinc-400">
+                          <span className="mb-1 block">Maximum movement this apply</span>
+                          <span className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min="1"
+                              max="50"
+                              value={anchorMaxChangePercent}
+                              onChange={(event) => setAnchorMaxChangePercent(Math.max(1, Math.min(50, Number(event.target.value) || 1)))}
+                              className="w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100 focus:border-emerald-500 focus:outline-none"
+                            />
+                            <span className="text-zinc-500">%</span>
+                          </span>
+                        </label>
+                      </div>
+                      <div className="mb-3 flex flex-wrap gap-2">
+                        {STRATEGIES.map((item) => (
+                          <button
+                            key={item.key}
+                            onClick={() => setStrategy(item.key)}
+                            className={`rounded border px-2.5 py-1 text-xs ${strategy === item.key ? "border-emerald-700 bg-emerald-950/60 text-emerald-300" : "border-zinc-700 text-zinc-400"}`}
+                          >
+                            {item.emoji} {item.label}
+                          </button>
+                        ))}
+                      </div>
+                      <label className="mb-3 flex items-start gap-2 text-xs text-zinc-400">
+                        <input
+                          type="checkbox"
+                          checked={applyFullAnchorTarget}
+                          onChange={(event) => setApplyFullAnchorTarget(event.target.checked)}
+                          className="mt-0.5"
+                        />
+                        Apply the full worldwide target now instead of staging changes within the movement cap.
+                      </label>
+                      <button
+                        onClick={generateAnchorPreview}
+                        disabled={anchorLoading || currentPrices.length === 0}
+                        className="w-full rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-600 disabled:opacity-40"
+                      >
+                        {anchorLoading ? "Building Google baseline…" : "Generate anchored preview"}
                       </button>
-                    ))}
-                  </div>
+                    </div>
+                  ) : (
+                    <AiRepricePanel
+                      getCsv={() => buildCsv(exportableRows())}
+                      platform="android"
+                      strategy={strategy}
+                      onStrategyChange={setStrategy}
+                      onResult={(data, cap) => {
+                        setPreviewMovementCap(cap);
+                        acceptGeneratedPolicy(data);
+                      }}
+                      disabled={currentPrices.length === 0}
+                      onExportCsv={exportCsv}
+                    />
+                  )}
 
-                  <button
-                    onClick={generatePolicyPreview}
-                    disabled={currentPrices.length === 0}
-                    className="w-full rounded-md bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed px-4 py-2 text-sm font-medium text-white transition mb-4"
-                  >
-                    {`Generate bounded preview · ${getStrategy(strategy).emoji} ${getStrategy(strategy).label}`}
-                  </button>
-
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="flex-1 h-px bg-zinc-800" />
-                    <span className="text-xs text-zinc-600">
-                      or paste your own CSV
-                    </span>
-                    <div className="flex-1 h-px bg-zinc-800" />
-                  </div>
+                  {pricingMode === "anchor" && (
+                    <div className="mb-3 flex items-center gap-3">
+                      <div className="h-px flex-1 bg-zinc-800" />
+                      <span className="text-xs text-zinc-600">or paste your own CSV</span>
+                      <div className="h-px flex-1 bg-zinc-800" />
+                    </div>
+                  )}
 
                   <textarea
                     value={sheetText}
                     onChange={(e) => {
                       setSheetText(e.target.value);
                       setImportPreview(null);
+                      setGoogleApprovedPreview(null);
+                      setPreviewMovementCap(null);
                     }}
                     placeholder={"region,price\nUS,4.99\nEG,49.99\nDE,3.99"}
                     rows={4}
@@ -1106,6 +1841,8 @@ export default function PlayPage() {
                           if (f) {
                             setSheetText(await f.text());
                             setImportPreview(null);
+                            setGoogleApprovedPreview(null);
+                            setPreviewMovementCap(null);
                           }
                         }}
                       />
@@ -1263,8 +2000,7 @@ export default function PlayPage() {
               ? `Before import · ${importPreview.filter((r) => r.newPrice !== r.currentPrice).length} regions`
               : ""
           }
-          onSaveAndApply={(name) => applyImport(true, name)}
-          onSkipAndApply={() => applyImport(false)}
+          onSaveAndApply={(name) => applyImport(name)}
           onCancel={() => setSnapshotDialog(false)}
         />
         <PaywallModal

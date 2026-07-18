@@ -38,10 +38,12 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     snapshots: rows.map((r) => ({
       id: r.id,
+      schemaVersion: 1,
       createdAt: r.createdAt.toISOString(),
       appId: r.appId,
       scope: r.scope,
       label: r.label,
+      platform: r.platform,
       baseTerritory: r.baseTerritory ?? undefined,
       rows: r.rows,
     })),
@@ -54,11 +56,14 @@ export async function POST(req: NextRequest) {
 
   let body: {
     id?: string;
+    createdAt?: string;
+    schemaVersion?: number;
     appId?: string;
     scope?: string;
     label?: string;
     baseTerritory?: string;
     rows?: unknown[];
+    platform?: "appstore" | "googleplay";
   };
   try {
     body = await req.json();
@@ -66,12 +71,42 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { id, appId, scope, label, baseTerritory, rows } = body;
-  if (!id || !appId || !scope || !label || !Array.isArray(rows)) {
+  const { id, createdAt, appId, scope, label, baseTerritory, rows, platform } = body;
+  if (!id || !createdAt || !appId || !scope || !label || !Array.isArray(rows)) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
+  }
+  const createdAtDate = new Date(createdAt);
+  if (!Number.isFinite(createdAtDate.getTime())) {
+    return NextResponse.json({ error: "Invalid snapshot date" }, { status: 400 });
   }
   if (rows.length > 1000) {
     return NextResponse.json({ error: "Too many rows" }, { status: 400 });
+  }
+  if (
+    id.length > 120 ||
+    appId.length > 200 ||
+    scope.length > 240 ||
+    label.length > 120 ||
+    (baseTerritory?.length ?? 0) > 8
+  ) {
+    return NextResponse.json({ error: "Snapshot fields are too long" }, { status: 400 });
+  }
+  const validRows = rows.every((row) => {
+    if (!row || typeof row !== "object") return false;
+    const value = row as Record<string, unknown>;
+    return (
+      typeof value.territoryId === "string" &&
+      value.territoryId.length <= 8 &&
+      typeof value.customerPrice === "string" &&
+      value.customerPrice.length <= 40 &&
+      typeof value.currency === "string" &&
+      value.currency.length <= 8 &&
+      typeof value.pricePointId === "string" &&
+      value.pricePointId.length <= 300
+    );
+  });
+  if (!validRows) {
+    return NextResponse.json({ error: "Invalid snapshot rows" }, { status: 400 });
   }
 
   const db = getDb();
@@ -80,7 +115,17 @@ export async function POST(req: NextRequest) {
 
   await db
     .insert(snapshots)
-    .values({ id, userId, appId, scope, label, baseTerritory, rows })
+    .values({
+      id,
+      userId,
+      appId,
+      scope,
+      label,
+      baseTerritory,
+      platform: platform ?? (scope.startsWith("gp:") ? "googleplay" : "appstore"),
+      rows,
+      createdAt: createdAtDate,
+    })
     .onConflictDoNothing();
 
   // Prune beyond cap (oldest first)

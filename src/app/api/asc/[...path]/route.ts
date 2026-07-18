@@ -7,6 +7,8 @@
  * .p8 private key, stores nothing, and logs nothing about the request body.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { canWriteToStores } from "@/lib/server/write-access";
+import { isAllowedAscPath } from "@/lib/server/store-proxy-policy";
 
 const ASC_BASE = "https://api.appstoreconnect.apple.com";
 const ALLOWED_METHODS = new Set(["GET", "POST", "PATCH", "DELETE"]);
@@ -19,7 +21,7 @@ async function handler(
     return NextResponse.json({ error: "Method not allowed" }, { status: 405 });
   }
 
-  const auth = req.headers.get("authorization");
+  const auth = req.headers.get("x-store-authorization");
   if (!auth?.startsWith("Bearer ")) {
     return NextResponse.json(
       { error: "Missing Authorization header" },
@@ -27,7 +29,17 @@ async function handler(
     );
   }
 
+  if (req.method !== "GET" && !(await canWriteToStores(req))) {
+    return NextResponse.json(
+      { error: "A StoreOps Pro or Lifetime entitlement is required for store writes." },
+      { status: 403 }
+    );
+  }
+
   const { path } = await params;
+  if (!isAllowedAscPath(req.method, path)) {
+    return NextResponse.json({ error: "Unsupported App Store Connect API path" }, { status: 400 });
+  }
   const url = new URL(`${ASC_BASE}/${path.join("/")}`);
   req.nextUrl.searchParams.forEach((value, key) => {
     url.searchParams.set(key, value);

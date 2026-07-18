@@ -59,6 +59,28 @@ export const pendingUpgrades = pgTable("pending_upgrades", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+/**
+ * One row per Lemon Squeezy order/subscription. Keeping entitlements separate
+ * prevents an old expired subscription from downgrading a newer active one.
+ */
+export const billingEntitlements = pgTable(
+  "billing_entitlements",
+  {
+    /** Namespaced Lemon Squeezy resource ID, e.g. `orders:1`. */
+    externalId: text("external_id").primaryKey(),
+    email: text("email").notNull(),
+    userId: text("user_id"),
+    kind: text("kind").notNull(),
+    plan: text("plan").notNull(),
+    status: text("status").notNull(),
+    productId: text("product_id"),
+    variantId: text("variant_id"),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("billing_entitlements_email_idx").on(t.email)]
+);
+
 export const usageEvents = pgTable("usage_events", {
   id: serial("id").primaryKey(),
   userId: text("user_id"),

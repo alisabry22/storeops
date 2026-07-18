@@ -1,0 +1,32 @@
+[    1911ms] [ERROR] TypeError: Cannot read properties of undefined (reading 'props')
+    at Proxy.sentry (https://assets.lemonsqueezy.com/0fccc56842e9325546352976ff3a5398f7a8959c/build/assets/app-D9biiLCQ.js:82:152731)
+    at xn.fn (https://assets.lemonsqueezy.com/0fccc56842e9325546352976ff3a5398f7a8959c/build/assets/useCheckoutState-CXEON7zF.js:9:9413)
+    at xn.run (https://assets.lemonsqueezy.com/0fccc56842e9325546352976ff3a5398f7a8959c/build/assets/useCheckoutState-CXEON7zF.js:9:1517)
+    at get value (https://assets.lemonsqueezy.com/0fccc56842e9325546352976ff3a5398f7a8959c/build/assets/useCheckoutState-CXEON7zF.js:9:9658)
+    at Object.get [as sentry] (https://assets.lemonsqueezy.com/0fccc56842e9325546352976ff3a5398f7a8959c/build/assets/useCheckoutState-CXEON7zF.js:16:26276)
+    at Object.get (https://assets.lemonsqueezy.com/0fccc56842e9325546352976ff3a5398f7a8959c/build/assets/useCheckoutState-CXEON7zF.js:16:23775)
+    at i (https://assets.lemonsqueezy.com/0fccc56842e9325546352976ff3a5398f7a8959c/build/assets/useCheckoutState-CXEON7zF.js:16:27238)
+    at Ot (https://assets.lemonsqueezy.com/0fccc56842e9325546352976ff3a5398f7a8959c/build/assets/useCheckoutState-CXEON7zF.js:16:1997)
+    at xn.f [as fn] (https://assets.lemonsqueezy.com/0fccc56842e9325546352976ff3a5398f7a8959c/build/assets/useCheckoutState-CXEON7zF.js:16:12771)
+    at xn.run (https://assets.lemonsqueezy.com/0fccc56842e9325546352976ff3a5398f7a8959c/build/assets/useCheckoutState-CXEON7zF.js:9:1517)
+    at Vn (https://assets.lemonsqueezy.com/0fccc56842e9325546352976ff3a5398f7a8959c/build/assets/useCheckoutState-CXEON7zF.js:16:13468)
+    at gn (https://assets.lemonsqueezy.com/0fccc56842e9325546352976ff3a5398f7a8959c/build/assets/useCheckoutState-CXEON7zF.js:16:12381)
+    at nf (https://assets.lemonsqueezy.com/0fccc56842e9325546352976ff3a5398f7a8959c/build/assets/useCheckoutState-CXEON7zF.js:16:27292)
+    at qp (https://assets.lemonsqueezy.com/0fccc56842e9325546352976ff3a5398f7a8959c/build/assets/useCheckoutState-CXEON7zF.js:16:26326)
+    at Ef (https://assets.lemonsqueezy.com/0fccc56842e9325546352976ff3a5398f7a8959c/build/assets/useCheckoutState-CXEON7zF.js:24:18727)
+    at gg (https://assets.lemonsqueezy.com/0fccc56842e9325546352976ff3a5398f7a8959c/build/assets/useCheckoutState-CXEON7zF.js:24:18176)
+    at Pf (https://assets.lemonsqueezy.com/0fccc56842e9325546352976ff3a5398f7a8959c/build/assets/useCheckoutState-CXEON7zF.js:24:17810)
+    at U (https://assets.lemonsqueezy.com/0fccc56842e9325546352976ff3a5398f7a8959c/build/assets/useCheckoutState-CXEON7zF.js:24:4307)
+    at C (https://assets.lemonsqueezy.com/0fccc56842e9325546352976ff3a5398f7a8959c/build/assets/useCheckoutState-CXEON7zF.js:24:4200)
+    at y (https://assets.lemonsqueezy.com/0fccc56842e9325546352976ff3a5398f7a8959c/build/assets/useCheckoutState-CXEON7zF.js:24:1156)
+    at Qa (https://assets.lemonsqueezy.com/0fccc56842e9325546352976ff3a5398f7a8959c/build/assets/useCheckoutState-CXEON7zF.js:24:9378)
+    at mount (https://assets.lemonsqueezy.com/0fccc56842e9325546352976ff3a5398f7a8959c/build/assets/useCheckoutState-CXEON7zF.js:16:29763)
+    at RA.t.mount (https://assets.lemonsqueezy.com/0fccc56842e9325546352976ff3a5398f7a8959c/build/assets/useCheckoutState-CXEON7zF.js:28:18199)
+    at setup (https://assets.lemonsqueezy.com/0fccc56842e9325546352976ff3a5398f7a8959c/build/assets/app-D9biiLCQ.js:82:152937)
+    at https://assets.lemonsqueezy.com/0fccc56842e9325546352976ff3a5398f7a8959c/build/assets/useCheckoutState-CXEON7zF.js:104:15458
+    at async LA (https://assets.lemonsqueezy.com/0fccc56842e9325546352976ff3a5398f7a8959c/build/assets/useCheckoutState-CXEON7zF.js:104:15290) @ https://assets.lemonsqueezy.com/0fccc56842e9325546352976ff3a5398f7a8959c/build/assets/app-D9biiLCQ.js:67
+[    2249ms] [ERROR] Failed to load resource: the server responded with a status of 403 () @ https://o4505075539902464.ingest.us.sentry.io/api/4505076398489600/envelope/?sentry_version=7&sentry_key=9b4670a486538110e9a1969dbceb8446&sentry_client=sentry.javascript.vue%2F10.32.1:0
+[    2250ms] [ERROR] Failed to load resource: the server responded with a status of 403 () @ https://o4505075539902464.ingest.us.sentry.io/api/4505076398489600/envelope/?sentry_version=7&sentry_key=9b4670a486538110e9a1969dbceb8446&sentry_client=sentry.javascript.vue%2F10.32.1:0
+[    2250ms] [ERROR] Failed to load resource: the server responded with a status of 403 () @ https://o4505075539902464.ingest.us.sentry.io/api/4505076398489600/envelope/?sentry_version=7&sentry_key=9b4670a486538110e9a1969dbceb8446&sentry_client=sentry.javascript.vue%2F10.32.1:0
+[    2820ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://auth.lemonsqueezy.com/user?cart=68bd71b3-bd84-4900-a568-37653991104e:0
+[    5079ms] [ERROR] Failed to load resource: the server responded with a status of 403 () @ https://o4505075539902464.ingest.us.sentry.io/api/4505076398489600/envelope/?sentry_version=7&sentry_key=9b4670a486538110e9a1969dbceb8446&sentry_client=sentry.javascript.vue%2F10.32.1:0

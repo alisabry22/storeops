@@ -2,8 +2,9 @@
  * Non-extractable key storage.
  * The .p8 is imported as a WebCrypto CryptoKey with extractable=false and
  * stored in IndexedDB. The browser can SIGN with it but physically cannot
- * export the key material — not even our own JavaScript. XSS, extensions,
- * or a localStorage dump get nothing.
+ * export the raw key material through WebCrypto. Code running in the page can
+ * still request signatures, so CSP and dependency hygiene remain part of the
+ * threat model. The PEM itself is never persisted.
  */
 "use client";
 
