@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { SignInButton, SignUpButton, useUser } from "@clerk/nextjs";
+import { isCommunityEdition } from "@/lib/edition";
 
-const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+const clerkEnabled =
+  !isCommunityEdition && !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
 /**
  * Gates store-connection surfaces behind a (free) account. Email capture

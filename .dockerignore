@@ -1,0 +1,14 @@
+node_modules
+.next
+.git
+.github
+.env*
+!.env.example
+!community.env.example
+npm-debug.log*
+coverage
+build
+out
+*.pem
+*.p8
+*service-account*.json

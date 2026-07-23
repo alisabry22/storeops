@@ -9,6 +9,7 @@ import { ApplySuccessDialog } from "@/components/ApplySuccessDialog";
 import { AiRepricePanel } from "@/components/AiRepricePanel";
 import { UpdateStatus } from "@/components/UpdateStatus";
 import { SnapshotPanel } from "@/components/SnapshotPanel";
+import { GooglePlayMetadataEditor } from "@/components/GooglePlayMetadataEditor";
 import { useIsPro } from "@/lib/license";
 import { useHydrated } from "@/lib/use-hydrated";
 import {
@@ -1656,6 +1657,15 @@ export default function PlayPage() {
                 </div>
               )}
             </div>
+
+            {/* ---- Store listing metadata ---- */}
+            {selectedPackage && (
+              <GooglePlayMetadataEditor
+                credentials={gpCredentials}
+                packageName={selectedPackage}
+                isPro={isPro}
+              />
+            )}
 
             {/* ---- Product selector ---- */}
             {selectedPackage && (

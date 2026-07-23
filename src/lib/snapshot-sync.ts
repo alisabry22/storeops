@@ -9,8 +9,10 @@
 "use client";
 
 import type { PriceSnapshot } from "./snapshots";
+import { isCommunityEdition } from "./edition";
 
-const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+const clerkEnabled =
+  !isCommunityEdition && !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
 function likelySignedIn(): boolean {
   // Clerk session cookies may be HttpOnly, so client JavaScript cannot reliably

@@ -8,10 +8,14 @@ import { and, asc, desc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { snapshots, users } from "@/db/schema";
 import { getUserId as requireUser } from "@/lib/server/auth";
+import { isCommunityEdition } from "@/lib/edition";
 
 const MAX_PER_SCOPE = 25;
 
 export async function GET(req: NextRequest) {
+  if (isCommunityEdition) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
   const userId = await requireUser();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -51,6 +55,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  if (isCommunityEdition) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
   const userId = await requireUser();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -150,6 +157,9 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  if (isCommunityEdition) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
   const userId = await requireUser();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 

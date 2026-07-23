@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { users } from "@/db/schema";
 import { getUserId } from "@/lib/server/auth";
+import { isCommunityEdition } from "@/lib/edition";
 
 const ISSUER = "storeops";
 const AUDIENCE = "storeops-store-write";
@@ -77,6 +78,9 @@ async function hasValidLegacyProof(req: Request): Promise<boolean> {
 
 /** Server-side entitlement gate for every store mutation. */
 export async function canWriteToStores(req: Request): Promise<boolean> {
+  // Community builds are operated by the developer using their own store
+  // credentials. Cloud builds keep every mutation behind an entitlement.
+  if (isCommunityEdition) return true;
   if (
     process.env.NODE_ENV !== "production" &&
     process.env.STOREOPS_ALLOW_UNLICENSED_WRITES === "true"

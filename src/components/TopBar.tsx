@@ -7,8 +7,10 @@ import { useIsPro, useLicense } from "@/lib/license";
 import { useState } from "react";
 import { AccountControls } from "./AccountControls";
 import { PaywallModal } from "./Paywall";
+import { isCommunityEdition } from "@/lib/edition";
 
-const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+const clerkEnabled =
+  !isCommunityEdition && !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
 /**
  * Shared top chrome for every authenticated page: logo, Pro badge, Disconnect.
@@ -54,7 +56,17 @@ export function TopBar({ backToApps = false }: { backToApps?: boolean }) {
             Account
           </Link>
         )}
-        {isPro ? (
+        {isCommunityEdition ? (
+          <a
+            href="https://github.com/alisabry22/storeops"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs rounded-full border border-sky-800 bg-sky-950/40 px-3 py-1 text-sky-300"
+            title="StoreOps Community Edition — AGPL-3.0"
+          >
+            Open source ↗
+          </a>
+        ) : isPro ? (
           <span
             className="text-xs rounded-full border border-emerald-800 bg-emerald-950/40 px-3 py-1 text-emerald-400 cursor-default"
             title={`${productName ?? "StoreOps Pro"} — double-click to release this device's license`}

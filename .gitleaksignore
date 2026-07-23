@@ -1,0 +1,2 @@
+# Literal PEM template in src/lib/asc/jwt.ts; `${lines}` is generated at runtime.
+62a60a22110508f4982627c98d6fe545c2a08684:src/lib/asc/jwt.ts:private-key:60

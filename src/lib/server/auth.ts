@@ -4,8 +4,10 @@
  * instead of auth() throwing a 500.
  */
 import { auth } from "@clerk/nextjs/server";
+import { isCommunityEdition } from "@/lib/edition";
 
 export const accountsEnabled =
+  !isCommunityEdition &&
   !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY &&
   !!process.env.CLERK_SECRET_KEY;
 

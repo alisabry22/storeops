@@ -1,8 +1,10 @@
 "use client";
 
 import { SignInButton, UserButton, useUser } from "@clerk/nextjs";
+import { isCommunityEdition } from "@/lib/edition";
 
-const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+const clerkEnabled =
+  !isCommunityEdition && !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
 /**
  * Sign-in / avatar for the TopBar. Purely presentational — account state

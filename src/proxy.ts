@@ -1,12 +1,14 @@
 import { clerkMiddleware } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import { isCommunityEdition } from "@/lib/edition";
 
 /**
  * Auth is opt-in by env: until Clerk keys are configured the app runs in
  * local-only mode (no accounts) and the proxy is a no-op. This keeps dev and
  * self-hosted setups working without a Clerk account.
  */
-const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+const clerkEnabled =
+  !isCommunityEdition && !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
 export default clerkEnabled ? clerkMiddleware() : () => NextResponse.next();
 

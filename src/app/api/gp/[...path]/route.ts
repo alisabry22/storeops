@@ -8,6 +8,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { canWriteToStores } from "@/lib/server/write-access";
+import { isNonMutatingGoogleOperation } from "@/lib/server/google-proxy-policy";
 
 const GP_BASE = "https://androidpublisher.googleapis.com";
 const ALLOWED_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
@@ -33,12 +34,7 @@ async function handler(
     return NextResponse.json({ error: "Unsupported Google Play API path" }, { status: 400 });
   }
   const joinedPath = path.join("/");
-  const readLikePost =
-    req.method === "POST" &&
-    (joinedPath.endsWith("/pricing:convertRegionPrices") ||
-      joinedPath.endsWith("/oneTimeProducts:batchGet") ||
-      joinedPath.endsWith("/subscriptions:batchGet"));
-  if (req.method !== "GET" && !readLikePost && !(await canWriteToStores(req))) {
+  if (!isNonMutatingGoogleOperation(req.method, joinedPath) && !(await canWriteToStores(req))) {
     return NextResponse.json(
       { error: "A StoreOps Pro or Lifetime entitlement is required for store writes." },
       { status: 403 }

@@ -4,11 +4,15 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { issueLegacyWriteProof } from "@/lib/server/write-access";
+import { isCommunityEdition } from "@/lib/edition";
 
 const LS_BASE = "https://api.lemonsqueezy.com/v1/licenses";
 const ACTIONS = new Set(["activate", "validate", "deactivate"]);
 
 export async function POST(req: NextRequest) {
+  if (isCommunityEdition) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
   let payload: {
     action?: string;
     license_key?: string;

@@ -16,6 +16,7 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  output: process.env.STOREOPS_STANDALONE === "true" ? "standalone" : undefined,
   // Keep Turbopack scoped to this repository when a parent directory also
   // contains a package-lock.json.
   turbopack: {

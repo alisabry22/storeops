@@ -11,8 +11,9 @@ import {
   identifyLemonPlan,
   isInactiveLemonStatus,
   lemonEntitlementExternalId,
-  verifyLemonSignature,
+  verifyLemonSignatureWithRotation,
 } from "@/lib/server/lemonsqueezy";
+import { isCommunityEdition } from "@/lib/edition";
 
 export const runtime = "nodejs";
 
@@ -96,6 +97,9 @@ async function recomputeCustomerPlan(
 }
 
 export async function POST(req: NextRequest) {
+  if (isCommunityEdition) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
   const secret = process.env.LEMONSQUEEZY_WEBHOOK_SECRET;
   if (!secret) {
     return NextResponse.json({ error: "Webhook not configured" }, { status: 503 });
@@ -103,7 +107,15 @@ export async function POST(req: NextRequest) {
 
   const raw = await req.text();
   const signature = req.headers.get("x-signature") ?? "";
-  if (!signature || !verifyLemonSignature(raw, signature, secret)) {
+  if (
+    !signature ||
+    !verifyLemonSignatureWithRotation(
+      raw,
+      signature,
+      secret,
+      process.env.LEMONSQUEEZY_WEBHOOK_SECRET_PREVIOUS
+    )
+  ) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 

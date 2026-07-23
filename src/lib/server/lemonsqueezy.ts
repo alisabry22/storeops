@@ -23,12 +23,30 @@ export function verifyLemonSignature(
   );
 }
 
+export function verifyLemonSignatureWithRotation(
+  raw: string,
+  signature: string,
+  currentSecret: string,
+  previousSecret?: string
+): boolean {
+  return [currentSecret, previousSecret]
+    .filter((secret): secret is string => !!secret)
+    .some((secret) => verifyLemonSignature(raw, signature, secret));
+}
+
 function configuredIds(name: string): Set<string> {
   return new Set(
     (process.env[name] ?? "")
       .split(",")
       .map((value) => value.trim())
       .filter(Boolean)
+  );
+}
+
+export function hasConfiguredLemonVariants(): boolean {
+  return (
+    configuredIds("LEMONSQUEEZY_LIFETIME_VARIANT_IDS").size > 0 ||
+    configuredIds("LEMONSQUEEZY_PRO_VARIANT_IDS").size > 0
   );
 }
 
@@ -44,11 +62,14 @@ export function identifyLemonPlan(
   if (proIds.has(variantId)) return "pro";
   if (lifetimeIds.size > 0 || proIds.size > 0) return null;
 
+  // Compatibility fallback for old installs that predate variant allowlists.
+  // Never turn an arbitrary Lemon Squeezy product into StoreOps access.
   const productName = (
     item?.product_name ??
     attrs.product_name ??
     ""
   ).toLowerCase();
+  if (!productName.includes("storeops")) return null;
   return productName.includes("lifetime") ? "lifetime" : "pro";
 }
 

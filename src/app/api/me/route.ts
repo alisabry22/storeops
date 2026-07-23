@@ -10,8 +10,12 @@ import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { pendingUpgrades, users } from "@/db/schema";
 import { getUserId } from "@/lib/server/auth";
+import { isCommunityEdition } from "@/lib/edition";
 
 export async function GET() {
+  if (isCommunityEdition) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
   const userId = await getUserId();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

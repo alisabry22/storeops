@@ -1,0 +1,11 @@
+title = "StoreOps Gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Ignore only the literal PEM template assembled by the Apple key parser."
+regexTarget = "match"
+regexes = [
+  '''-----BEGIN PRIVATE KEY-----\\n\$\{lines\}\\n-----END PRIVATE KEY-----''',
+]

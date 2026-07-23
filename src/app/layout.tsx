@@ -5,11 +5,13 @@ import { Analytics } from "@vercel/analytics/next";
 import { AccountSync } from "@/components/AccountSync";
 import { KeyMigrator } from "@/components/KeyMigrator";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_TITLE, SITE_URL } from "@/lib/site";
+import { isCommunityEdition } from "@/lib/edition";
 import "./globals.css";
 
 // Accounts are opt-in by env: without Clerk keys the app runs local-only.
-const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
-const analyticsEnabled = process.env.VERCEL === "1";
+const clerkEnabled =
+  !isCommunityEdition && !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+const analyticsEnabled = !isCommunityEdition && process.env.VERCEL === "1";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -97,6 +99,19 @@ export default function RootLayout({
         <KeyMigrator />
         {clerkEnabled && <AccountSync />}
         {children}
+        {isCommunityEdition && (
+          <footer className="border-t border-zinc-900 px-6 py-4 text-center text-xs text-zinc-600">
+            StoreOps Community Edition · No warranty ·{" "}
+            <a
+              href="https://github.com/alisabry22/storeops"
+              className="text-zinc-400 hover:text-emerald-400"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Source and AGPL-3.0 license
+            </a>
+          </footer>
+        )}
         {analyticsEnabled && <Analytics />}
       </body>
     </html>

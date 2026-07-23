@@ -90,6 +90,23 @@ export interface GpSubscription {
   archived?: boolean;
 }
 
+export interface GpEdit {
+  id: string;
+  expiryTime?: string;
+}
+
+export interface GpListing {
+  language: string;
+  title?: string;
+  shortDescription?: string;
+  fullDescription?: string;
+  video?: string;
+}
+
+export interface GpListingsResponse {
+  listings?: GpListing[];
+}
+
 /**
  * Do not hard-code billability: it belongs to the RegionsVersion returned by
  * Google and can change. The apply loop learns a non-billable region from the

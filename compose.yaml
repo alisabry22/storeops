@@ -1,0 +1,12 @@
+services:
+  storeops:
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_STOREOPS_EDITION: community
+        NEXT_PUBLIC_SITE_URL: ${STOREOPS_PUBLIC_URL:-http://localhost:3000}
+    ports:
+      - "${STOREOPS_PORT:-3000}:3000"
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    restart: unless-stopped

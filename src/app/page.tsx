@@ -9,8 +9,10 @@ import {
   YEARLY_PRICE,
   useCheckoutUrls,
 } from "@/lib/license";
+import { isCommunityEdition } from "@/lib/edition";
 
-const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+const clerkEnabled =
+  !isCommunityEdition && !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
 function StoreCta({ href, label, primary = false }: { href: string; label: string; primary?: boolean }) {
   const className = primary
@@ -112,6 +114,66 @@ const OPERATIONS = [
   ["Pricing history", "Leave yourself a way back", "Save the full grid before applying. Restore Google’s current storefront grid or schedule the corrective Apple change the store permits."],
 ];
 
+function CommunityEditionSection() {
+  return (
+    <section id="pricing" className="border-t border-zinc-900 bg-[#080a09]">
+      <div className="mx-auto max-w-5xl px-6 py-24 sm:py-28">
+        <div className="mx-auto max-w-3xl text-center">
+          <p className="font-mono text-xs uppercase tracking-[0.18em] text-sky-400">
+            Community edition · AGPL-3.0
+          </p>
+          <h2 className="mt-4 text-4xl font-semibold tracking-[-0.045em] text-white">
+            Your stores, your infrastructure, the complete source.
+          </h2>
+          <p className="mx-auto mt-5 max-w-2xl leading-relaxed text-zinc-400">
+            Core pricing, metadata, snapshots, previews, applies, and verification are
+            unlocked in self-hosted builds. Store credentials remain on infrastructure
+            you control.
+          </p>
+        </div>
+        <div className="mx-auto mt-10 grid max-w-3xl gap-px overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-800 sm:grid-cols-2">
+          <div className="bg-zinc-950 p-7">
+            <p className="text-sm font-semibold text-zinc-200">Community</p>
+            <p className="mt-3 text-4xl font-semibold text-white">Free</p>
+            <ul className="mt-7 space-y-3 text-sm text-zinc-400">
+              <li>Self-host on your own machine or server</li>
+              <li>Apple and Google workflows</li>
+              <li>Local snapshots and verification</li>
+              <li>Source available under AGPL-3.0</li>
+            </ul>
+            <a
+              href="https://github.com/alisabry22/storeops"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-8 block rounded-md border border-zinc-700 px-4 py-3 text-center text-sm font-semibold text-zinc-200 transition hover:border-sky-600 hover:text-sky-300"
+            >
+              View source on GitHub ↗
+            </a>
+          </div>
+          <div className="bg-emerald-950/30 p-7">
+            <p className="text-sm font-semibold text-emerald-300">StoreOps Cloud</p>
+            <p className="mt-3 text-2xl font-semibold text-white">Hosted convenience</p>
+            <ul className="mt-7 space-y-3 text-sm text-zinc-300">
+              <li>No deployment or upgrades to manage</li>
+              <li>Account-backed snapshot synchronization</li>
+              <li>Managed billing and entitlement</li>
+              <li>Direct support from the maintainers</li>
+            </ul>
+            <a
+              href="https://www.storeops.dev"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-glow mt-8 block rounded-md bg-emerald-400 px-4 py-3 text-center text-sm font-semibold text-zinc-950 transition hover:bg-emerald-300"
+            >
+              Use StoreOps Cloud ↗
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function LandingPage() {
   const { credentials } = useCredentials();
   const { yearly: yearlyUrl, lifetime: lifetimeUrl } = useCheckoutUrls();
@@ -124,7 +186,9 @@ export default function LandingPage() {
           <nav className="hidden items-center gap-7 text-sm text-zinc-500 md:flex">
             <a href="#workflow" className="transition hover:text-zinc-200">Workflow</a>
             <a href="#safety" className="transition hover:text-zinc-200">Safety</a>
-            <a href="#pricing" className="transition hover:text-zinc-200">Pricing</a>
+            <a href="#pricing" className="transition hover:text-zinc-200">
+              {isCommunityEdition ? "Open source" : "Pricing"}
+            </a>
           </nav>
           <HomeNav connected={!!credentials} />
         </div>
@@ -179,7 +243,9 @@ export default function LandingPage() {
           {[
             ["Read first", "Connect both stores and inspect every product without paying."],
             ["Review everything", "Current and proposed prices stay side by side until you approve."],
-            ["Pay for execution", "Pro unlocks authorized writes, history, and recovery workflows."],
+            isCommunityEdition
+              ? ["Developer controlled", "Community builds unlock execution on infrastructure you operate."]
+              : ["Pay for execution", "Pro unlocks authorized writes, history, and recovery workflows."],
           ].map(([title, body]) => (
             <div key={title} className="py-8 sm:px-8 sm:first:pl-0 sm:last:pr-0"><h3 className="text-sm font-semibold text-zinc-200">{title}</h3><p className="mt-2 text-sm leading-relaxed text-zinc-500">{body}</p></div>
           ))}
@@ -194,7 +260,7 @@ export default function LandingPage() {
         <div className="mt-14 grid gap-10 border-t border-zinc-800 pt-10 md:grid-cols-3">
           <div><p className="font-mono text-xs text-emerald-400">01 · Controlled</p><h3 className="mt-3 font-semibold text-zinc-100">AI configures the policy, not the prices</h3><p className="mt-2 text-sm leading-relaxed text-zinc-500">Price generation is deterministic, capped per territory, and visible before apply.</p></div>
           <div><p className="font-mono text-xs text-emerald-400">02 · Recoverable</p><h3 className="mt-3 font-semibold text-zinc-100">The old grid is saved first</h3><p className="mt-2 text-sm leading-relaxed text-zinc-500">Google restore points return current storefront pricing. Apple changes follow Apple’s scheduling and subscriber rules.</p></div>
-          <div><p className="font-mono text-xs text-emerald-400">03 · Authorized</p><h3 className="mt-3 font-semibold text-zinc-100">Paid writes are enforced on the server</h3><p className="mt-2 text-sm leading-relaxed text-zinc-500">Raw store keys remain non-extractable in your browser; only short-lived store tokens cross the proxy.</p></div>
+          <div><p className="font-mono text-xs text-emerald-400">03 · Authorized</p><h3 className="mt-3 font-semibold text-zinc-100">{isCommunityEdition ? "Writes run on your deployment" : "Paid writes are enforced on the server"}</h3><p className="mt-2 text-sm leading-relaxed text-zinc-500">Raw store keys remain non-extractable in your browser; only short-lived store tokens cross the proxy you operate.</p></div>
         </div>
       </section>
 
@@ -205,7 +271,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section id="pricing" className="border-t border-zinc-900 bg-[#080a09]">
+      {isCommunityEdition ? <CommunityEditionSection /> : <section id="pricing" className="border-t border-zinc-900 bg-[#080a09]">
         <div className="mx-auto max-w-5xl px-6 py-24 sm:py-28">
           <div className="mx-auto max-w-2xl text-center"><p className="font-mono text-xs uppercase tracking-[0.18em] text-emerald-400">Pay less than one wasted afternoon</p><h2 className="mt-4 text-4xl font-semibold tracking-[-0.045em] text-white">Inspect for free. Upgrade when the change is ready.</h2></div>
           <div className={`mx-auto mt-12 grid max-w-4xl gap-px overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-800 ${lifetimeUrl ? "md:grid-cols-3" : "md:grid-cols-2"}`}>
@@ -215,11 +281,11 @@ export default function LandingPage() {
           </div>
           <p className="mt-6 text-center text-xs text-zinc-600">Existing paid customers keep their current entitlement.</p>
         </div>
-      </section>
+      </section>}
 
       <section className="border-t border-zinc-900 px-6 py-20 text-center"><h2 className="mx-auto max-w-3xl text-4xl font-semibold tracking-[-0.045em] text-white sm:text-5xl">Your next release can end when the code is done.</h2><div className="mt-8"><StoreCta href="/connect" label="Inspect my live stores — free" primary /></div></section>
 
-      <footer className="border-t border-zinc-900"><div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-5 px-6 py-8 text-xs text-zinc-600 sm:flex-row"><p>Store<span className="text-emerald-500">Ops</span> · App Store and Google Play operations</p><div className="flex flex-wrap justify-center gap-5"><Link href="/terms" className="hover:text-zinc-300">Terms</Link><Link href="/privacy" className="hover:text-zinc-300">Privacy</Link><Link href="/google-play-bulk-pricing" className="hover:text-zinc-300">Google pricing</Link><Link href="/subscription-pricing" className="hover:text-zinc-300">Subscription pricing</Link><a href="mailto:support@storeops.dev" className="hover:text-zinc-300">Support</a></div></div></footer>
+      <footer className="border-t border-zinc-900"><div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-5 px-6 py-8 text-xs text-zinc-600 sm:flex-row"><p>Store<span className="text-emerald-500">Ops</span> · App Store and Google Play operations</p><div className="flex flex-wrap justify-center gap-5"><a href="https://github.com/alisabry22/storeops" target="_blank" rel="noopener noreferrer" className="hover:text-zinc-300">GitHub</a>{!isCommunityEdition && <><Link href="/terms" className="hover:text-zinc-300">Terms</Link><Link href="/privacy" className="hover:text-zinc-300">Privacy</Link></>}<Link href="/google-play-bulk-pricing" className="hover:text-zinc-300">Google pricing</Link><Link href="/subscription-pricing" className="hover:text-zinc-300">Subscription pricing</Link><a href="mailto:support@storeops.dev" className="hover:text-zinc-300">Support</a></div></div></footer>
     </main>
   );
 }

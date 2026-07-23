@@ -1,0 +1,38 @@
+name: Bug report
+description: Report a reproducible StoreOps problem without exposing credentials.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: "Never paste store keys, service-account JSON, tokens, license keys, or customer data. Report vulnerabilities through SECURITY.md."
+  - type: dropdown
+    id: edition
+    attributes:
+      label: Edition
+      options: [Community, StoreOps Cloud]
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Include expected behavior and a minimal reproduction.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Commit/release, browser, operating system, and deployment method.
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety confirmation
+      options:
+        - label: I removed credentials, tokens, customer data, and sensitive API responses.
+          required: true
+        - label: This is not a security vulnerability.
+          required: true

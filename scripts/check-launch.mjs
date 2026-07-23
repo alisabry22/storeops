@@ -28,6 +28,15 @@ function requireHttpsUrl(name, message) {
 }
 
 requireHttpsUrl("NEXT_PUBLIC_SITE_URL", "set the canonical production URL.");
+const edition = value("NEXT_PUBLIC_STOREOPS_EDITION") || "cloud";
+if (edition !== "cloud" && edition !== "community") {
+  errors.push("NEXT_PUBLIC_STOREOPS_EDITION: use cloud or community.");
+}
+if (edition === "community") {
+  errors.push(
+    "NEXT_PUBLIC_STOREOPS_EDITION: hosted StoreOps launch must use cloud; community unlocks self-hosted writes."
+  );
+}
 requireValue("DATABASE_URL", "set the production Postgres connection string.");
 requireValue("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", "set the Clerk publishable key.");
 requireValue("CLERK_SECRET_KEY", "set the matching Clerk secret key.");
@@ -63,12 +72,33 @@ if (publishableFamily === "test" || secretFamily === "test") {
 }
 
 const webhookSecret = value("LEMONSQUEEZY_WEBHOOK_SECRET");
+const previousWebhookSecret = value("LEMONSQUEEZY_WEBHOOK_SECRET_PREVIOUS");
 const proofSecret = value("STOREOPS_LICENSE_PROOF_SECRET");
 if (webhookSecret && webhookSecret.length < 24) {
   errors.push("LEMONSQUEEZY_WEBHOOK_SECRET: value is unexpectedly short.");
 }
 if (webhookSecret.length > 40) {
   errors.push("LEMONSQUEEZY_WEBHOOK_SECRET: Lemon Squeezy allows at most 40 characters.");
+}
+if (previousWebhookSecret && previousWebhookSecret.length < 24) {
+  errors.push("LEMONSQUEEZY_WEBHOOK_SECRET_PREVIOUS: value is unexpectedly short.");
+}
+if (previousWebhookSecret.length > 40) {
+  errors.push(
+    "LEMONSQUEEZY_WEBHOOK_SECRET_PREVIOUS: Lemon Squeezy allows at most 40 characters."
+  );
+}
+if (
+  webhookSecret &&
+  previousWebhookSecret &&
+  previousWebhookSecret === webhookSecret
+) {
+  errors.push("Billing: current and previous webhook secrets must differ.");
+}
+if (previousWebhookSecret) {
+  warnings.push(
+    "LEMONSQUEEZY_WEBHOOK_SECRET_PREVIOUS: rotation window is active; remove the old secret after verification."
+  );
 }
 if (proofSecret && proofSecret.length < 32) {
   errors.push("STOREOPS_LICENSE_PROOF_SECRET: use at least 32 characters.");

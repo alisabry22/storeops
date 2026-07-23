@@ -1,10 +1,12 @@
 import crypto from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  hasConfiguredLemonVariants,
   identifyLemonPlan,
   isInactiveLemonStatus,
   lemonEntitlementExternalId,
   verifyLemonSignature,
+  verifyLemonSignatureWithRotation,
 } from "./lemonsqueezy";
 
 afterEach(() => {
@@ -19,6 +21,15 @@ describe("Lemon Squeezy entitlement policy", () => {
     expect(identifyLemonPlan({ variant_id: 1888145 })).toBe("pro");
     expect(identifyLemonPlan({ variant_id: 1892544 })).toBe("lifetime");
     expect(identifyLemonPlan({ variant_id: 9999999 })).toBeNull();
+    expect(hasConfiguredLemonVariants()).toBe(true);
+  });
+
+  it("does not grant StoreOps access to an unrelated legacy product", () => {
+    expect(identifyLemonPlan({ product_name: "Another product" })).toBeNull();
+    expect(identifyLemonPlan({ product_name: "StoreOps Pro" })).toBe("pro");
+    expect(identifyLemonPlan({ product_name: "StoreOps Lifetime" })).toBe(
+      "lifetime"
+    );
   });
 
   it("verifies the exact raw webhook body with the signing secret", () => {
@@ -28,6 +39,27 @@ describe("Lemon Squeezy entitlement policy", () => {
 
     expect(verifyLemonSignature(raw, signature, secret)).toBe(true);
     expect(verifyLemonSignature(`${raw} `, signature, secret)).toBe(false);
+  });
+
+  it("accepts the previous webhook secret only during a planned rotation", () => {
+    const raw = JSON.stringify({ meta: { event_name: "order_created" } });
+    const previous = "previous webhook secret";
+    const signature = crypto
+      .createHmac("sha256", previous)
+      .update(raw)
+      .digest("hex");
+
+    expect(
+      verifyLemonSignatureWithRotation(
+        raw,
+        signature,
+        "new webhook secret",
+        previous
+      )
+    ).toBe(true);
+    expect(
+      verifyLemonSignatureWithRotation(raw, signature, "new webhook secret")
+    ).toBe(false);
   });
 
   it("revokes ended or refunded access without cutting off grace and dunning states", () => {
