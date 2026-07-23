@@ -16,6 +16,7 @@
     "node": ">=22"
   },
   "overrides": {
+    "esbuild": "0.25.0",
     "postcss": "8.5.22",
     "sharp": "0.35.3"
   },
