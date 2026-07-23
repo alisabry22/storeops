@@ -41,7 +41,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.111.0",
     "@clerk/nextjs": "^7.5.17",
-    "@google/genai": "^2.11.0",
+    "@google/genai": "^2.13.0",
     "@google/generative-ai": "^0.24.1",
     "@neondatabase/serverless": "^1.1.0",
     "@vercel/analytics": "^2.0.1",
