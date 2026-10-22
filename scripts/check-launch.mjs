@@ -137,9 +137,6 @@ for (const id of lifetimeIds) {
   if (!allowedIds.has(id)) errors.push(`Lemon Squeezy: lifetime variant ${id} is not allowed.`);
 }
 
-if (value("STOREOPS_ALLOW_UNLICENSED_WRITES") === "true") {
-  errors.push("STOREOPS_ALLOW_UNLICENSED_WRITES: must not be true for launch.");
-}
 if (!value("NEXT_PUBLIC_LS_CUSTOMER_PORTAL_URL")) {
   warnings.push("NEXT_PUBLIC_LS_CUSTOMER_PORTAL_URL: optional, but recommended for self-service billing.");
 }

@@ -20,8 +20,10 @@ open-source product useful while preserving a normal paid hosted service.
 | AI policy assistant | Optional operator Gemini key | Managed paid feature |
 
 Community unlocks core store writes because the developer operates the
-deployment. Cloud checks the signed-in account or a server-signed legacy
-license proof before every store mutation.
+deployment. Production Cloud builds check the signed-in account or a
+server-signed legacy license proof before every store mutation. The local
+Next.js development server bypasses paid entitlement checks for development
+only.
 
 ## Build boundary
 

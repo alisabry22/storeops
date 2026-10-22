@@ -5,7 +5,10 @@ import { usageEvents, users } from "@/db/schema";
 import { and, count, eq, gte } from "drizzle-orm";
 import { getUserId } from "@/lib/server/auth";
 import type { PricingStrategy } from "@/lib/pricing-strategies";
-import { isCommunityEdition } from "@/lib/edition";
+import {
+  isCommunityEdition,
+  isDevelopmentSubscriptionBypass,
+} from "@/lib/edition";
 
 const ALLOWED_STRATEGIES = new Set<PricingStrategy>(["ppp", "growth", "revenue", "retention", "enterprise"]);
 /**
@@ -31,7 +34,7 @@ export async function POST(req: NextRequest) {
       .from(users)
       .where(eq(users.id, userId!))
       .limit(1);
-    if (!user || user.plan === "free") {
+    if (!isDevelopmentSubscriptionBypass && (!user || user.plan === "free")) {
       return NextResponse.json({ error: "AI policy assistant requires Pro or Lifetime." }, { status: 403 });
     }
   }

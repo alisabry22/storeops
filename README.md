@@ -129,6 +129,10 @@ npm run lint
 npm run build
 ```
 
+When running with `npm run dev`, Cloud entitlement checks are bypassed for
+local development only. Production builds still require a paid entitlement for
+store writes.
+
 The stack is Next.js, React, TypeScript, Tailwind CSS, WebCrypto, Zustand, and
 Vitest. Cloud deployments additionally use Clerk, Neon/Drizzle, Lemon Squeezy,
 and Vercel Analytics.

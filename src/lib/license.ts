@@ -9,7 +9,10 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { useAccount } from "./account";
 import { withCheckoutIdentity } from "./checkout";
-import { isCommunityEdition } from "./edition";
+import {
+  isCommunityEdition,
+  isDevelopmentSubscriptionBypass,
+} from "./edition";
 
 export const CHECKOUT_URL =
   process.env.NEXT_PUBLIC_LS_CHECKOUT_URL ??
@@ -195,7 +198,12 @@ export function useIsPro(): boolean {
   // Pro from either source: account plan (SaaS) or device license (legacy)
   const deviceLicense = useLicense((s) => s.status === "active");
   const accountPro = useAccount((s) => s.plan === "pro" || s.plan === "lifetime");
-  return isCommunityEdition || deviceLicense || accountPro;
+  return (
+    isCommunityEdition ||
+    isDevelopmentSubscriptionBypass ||
+    deviceLicense ||
+    accountPro
+  );
 }
 
 /**
