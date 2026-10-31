@@ -16,6 +16,8 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // Keep browser QA isolated from an already-running development server.
+  distDir: process.env.STOREOPS_TEST_BUILD_DIR || ".next",
   output: process.env.STOREOPS_STANDALONE === "true" ? "standalone" : undefined,
   // Keep Turbopack scoped to this repository when a parent directory also
   // contains a package-lock.json.

@@ -153,7 +153,11 @@ export function moneyToDecimal(m: GpMoney): string {
 }
 
 export function decimalToMoney(price: number, currencyCode: string): GpMoney {
-  const units = Math.trunc(price);
-  const nanos = Math.round((price - units) * 1_000_000_000);
+  let units = Math.trunc(price);
+  let nanos = Math.round((price - units) * 1_000_000_000);
+  if (Math.abs(nanos) >= 1_000_000_000) {
+    units += Math.sign(nanos);
+    nanos = 0;
+  }
   return { currencyCode, units: String(units), nanos };
 }

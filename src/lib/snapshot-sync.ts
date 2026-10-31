@@ -55,7 +55,9 @@ export async function pushSnapshotToServer(
     return {
       status,
       cloudExpected: true,
-      error: body?.error ?? `Snapshot cloud sync returned ${response.status}.`,
+      error: response.status === 401
+        ? "Sign in to your StoreOps Cloud account and try again."
+        : body?.error ?? `Snapshot cloud sync returned ${response.status}.`,
     };
   } catch (error) {
     announceSync("local-only", snapshot.id);

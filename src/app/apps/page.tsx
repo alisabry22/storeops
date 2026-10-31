@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useCredentials } from "@/lib/store";
 import { ascFetchAll } from "@/lib/asc/client";
 import { TopBar } from "@/components/TopBar";
+import { AppTabs } from "@/components/AppTabs";
 import { useLicense } from "@/lib/license";
 import type { App } from "@/lib/asc/types";
 import { useHydrated } from "@/lib/use-hydrated";
@@ -51,12 +52,13 @@ export default function AppsPage() {
   if (!hydrated || !credentials) return null;
 
   return (
-    <main className="max-w-3xl mx-auto w-full px-6 py-12">
+    <main id="main-content" className="max-w-3xl mx-auto w-full px-6 py-12">
       <TopBar />
 
-      <h2 className="text-lg font-semibold text-zinc-400 mb-6">
+      <h1 className="text-2xl font-semibold tracking-tight mb-2">
         Your apps
-      </h2>
+      </h1>
+      <p className="mb-6 text-sm text-zinc-400">Choose an app, then pick what you want to work on.</p>
 
       {error && (
         <p className="text-sm text-red-400 bg-red-950/40 border border-red-900 rounded-md px-3 py-2 mb-4">
@@ -82,17 +84,16 @@ export default function AppsPage() {
       )}
 
       <div className="space-y-3">
-        {apps?.map((app, i) => (
-          <Link
+        {apps?.map((app) => (
+          <article
             key={app.id}
-            href={`/apps/${app.id}`}
-            className="card animate-fade-up flex items-center gap-4 p-5 hover:border-emerald-700/60 hover:bg-zinc-900/80 transition group"
-            style={{ animationDelay: `${i * 60}ms` }}
+            className="card p-4 sm:p-5"
           >
+            <div className="mb-4 flex items-center gap-4">
             <AppAvatar name={app.attributes.name} />
             <div className="flex-1 min-w-0">
-              <h2 className="font-semibold group-hover:text-emerald-400 transition truncate">
-                {app.attributes.name}
+              <h2 className="font-semibold truncate">
+                <Link href={`/apps/${app.id}`}>{app.attributes.name}</Link>
               </h2>
               <p className="text-sm text-zinc-500 font-mono mt-0.5 truncate">
                 {app.attributes.bundleId}
@@ -101,10 +102,9 @@ export default function AppsPage() {
             <span className="text-xs text-zinc-600 font-mono hidden sm:block">
               {app.attributes.primaryLocale}
             </span>
-            <span className="text-zinc-600 group-hover:text-emerald-400 group-hover:translate-x-0.5 transition">
-              →
-            </span>
-          </Link>
+            </div>
+            <AppTabs appId={app.id} />
+          </article>
         ))}
         {apps?.length === 0 && (
           <div className="card p-8 text-center animate-fade-up">

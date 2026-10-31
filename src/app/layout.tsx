@@ -92,6 +92,7 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-zinc-950 text-zinc-100" suppressHydrationWarning>
+        <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-emerald-800 focus:px-4 focus:py-3 focus:text-white">Skip to content</a>
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
@@ -109,6 +110,9 @@ export default function RootLayout({
               rel="noopener noreferrer"
             >
               Source and AGPL-3.0 license
+            </a>{" · "}
+            <a href="https://www.storeops.dev" className="text-zinc-400 hover:text-emerald-400">
+              Explore managed StoreOps Cloud
             </a>
           </footer>
         )}

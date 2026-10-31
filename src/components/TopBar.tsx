@@ -22,11 +22,11 @@ export function TopBar({ backToApps = false }: { backToApps?: boolean }) {
   const router = useRouter();
   const { clearCredentials } = useCredentials();
   const isPro = useIsPro();
-  const { deactivate, productName } = useLicense();
+  const { productName } = useLicense();
   const [paywallOpen, setPaywallOpen] = useState(false);
 
   return (
-    <header className="flex items-center justify-between mb-10">
+    <header className="mb-8 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
       <div className="flex items-center gap-3 min-w-0">
         {backToApps && (
           <Link
@@ -37,14 +37,14 @@ export function TopBar({ backToApps = false }: { backToApps?: boolean }) {
             ← Apps
           </Link>
         )}
-        <h1 className="text-2xl font-bold tracking-tight truncate">
+        <Link href="/apps" className="text-2xl font-bold tracking-tight truncate" aria-label="StoreOps apps">
           Store<span className="text-emerald-400">Ops</span>
-        </h1>
+        </Link>
       </div>
-      <div className="flex items-center gap-3 shrink-0">
+      <div className="flex flex-wrap items-center gap-3">
         <Link
           href="/play"
-          className="hidden sm:inline text-sm text-zinc-400 hover:text-emerald-400 transition"
+          className="inline-flex min-h-11 items-center text-sm text-zinc-300 hover:text-emerald-300 transition-colors"
         >
           Google Play →
         </Link>
@@ -62,24 +62,23 @@ export function TopBar({ backToApps = false }: { backToApps?: boolean }) {
             target="_blank"
             rel="noopener noreferrer"
             className="text-xs rounded-full border border-sky-800 bg-sky-950/40 px-3 py-1 text-sky-300"
-            title="StoreOps Community Edition — AGPL-3.0"
+            title="Self-hosted Community Edition — no StoreOps account required"
           >
-            Open source ↗
+            Community · self-hosted
           </a>
         ) : isPro ? (
           <span
             className="text-xs rounded-full border border-emerald-800 bg-emerald-950/40 px-3 py-1 text-emerald-400 cursor-default"
-            title={`${productName ?? "StoreOps Pro"} — double-click to release this device's license`}
-            onDoubleClick={deactivate}
+            title={productName ?? "StoreOps Pro"}
           >
-            ★ Pro
+            Cloud · Pro
           </span>
         ) : (
           <button
             onClick={() => setPaywallOpen(true)}
             className="text-xs rounded-full border border-zinc-700 px-3 py-1 text-zinc-300 hover:border-emerald-600 hover:text-emerald-400 transition"
           >
-            Upgrade to Pro
+            Cloud · Upgrade to Pro
           </button>
         )}
         <button

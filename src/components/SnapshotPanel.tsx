@@ -11,6 +11,7 @@ import {
   type PriceSnapshot,
 } from "@/lib/snapshots";
 import { fetchServerSnapshots } from "@/lib/snapshot-sync";
+import { isCommunityEdition } from "@/lib/edition";
 
 /**
  * Snapshots list with one-click restore, export, and named save.
@@ -68,8 +69,6 @@ export function SnapshotPanel({
     };
   }, [appId, scope, refreshKey]);
 
-  if (snapshots.length === 0 && !onSave) return null;
-
   function doSave() {
     if (!saveName.trim() || !onSave) return;
     onSave(saveName.trim());
@@ -77,9 +76,11 @@ export function SnapshotPanel({
   }
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 mb-6">
+    <details className="rounded-xl border border-zinc-800 bg-zinc-900/30 p-4 mb-6">
+      <summary className="min-h-11 cursor-pointer text-sm font-semibold">Price backups <span className="ml-2 font-normal text-zinc-400">{snapshots.length} saved</span></summary>
+      <div className="mt-4">
       <div className="flex items-center gap-2 mb-1">
-        <h3 className="text-sm font-semibold">Pricing history</h3>
+        <h3 className="sr-only">Saved price backups</h3>
         {platform === "google" && <span className="rounded-full border border-emerald-800 bg-emerald-950/50 px-2 py-0.5 text-[10px] font-medium text-emerald-300">Reusable restore points</span>}
         {syncState && (
           <span className={`text-[10px] ${syncState === "synced" ? "text-emerald-400" : "text-zinc-500"}`}>
@@ -89,26 +90,31 @@ export function SnapshotPanel({
       </div>
       <p className="text-xs text-zinc-500 mb-3">
         {platform === "google"
-          ? "Restore any saved regional storefront grid in one click. StoreOps saves the current grid first, so every restore is itself reversible. Subscription cohort and completed billing history are not rewritten."
-          : "Restore the previous storefront grid in one click. Pending mistakes are cancelled; effective changes are scheduled back at Apple’s earliest permitted date. Billing already completed cannot be reversed."}
+          ? "Restore saved country prices. Your current prices are backed up first; completed charges and subscriber cohorts are unchanged."
+          : "Restore saved country prices at Apple’s next permitted date. Completed charges cannot be reversed."}
       </p>
+      {isCommunityEdition && <p className="text-xs text-zinc-300 mb-3">
+        Backups stay in this browser. Before applying prices, save a backup here and download it for safekeeping. Import it here if you need it later.
+      </p>}
 
-      {onSave && (
         <div className="flex flex-wrap gap-2 mb-3">
+          {onSave && <>
           <input
+            aria-label="Backup name"
             value={saveName}
             onChange={(e) => setSaveName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && doSave()}
-            placeholder="Name this snapshot (e.g. Before Black Friday)…"
+            placeholder="Name this backup…"
             className="flex-1 rounded-md bg-zinc-950 border border-zinc-800 px-3 py-1.5 text-xs focus:border-emerald-500 focus:outline-none"
           />
           <button
             onClick={doSave}
-            disabled={!saveName.trim()}
+            disabled={!saveName.trim() || busy}
             className="text-xs rounded-md border border-zinc-700 px-3 py-1.5 text-zinc-300 hover:border-emerald-600 hover:text-emerald-400 disabled:opacity-40 transition"
           >
             Save
           </button>
+          </>}
           <input
             id={importInputId}
             type="file"
@@ -133,10 +139,9 @@ export function SnapshotPanel({
             onClick={() => document.getElementById(importInputId)?.click()}
             className="text-xs rounded-md border border-zinc-700 px-3 py-1.5 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200 transition"
           >
-            Import JSON
+            Import backup
           </button>
         </div>
-      )}
 
       {importError && (
         <p className="mb-3 rounded-md border border-red-900 bg-red-950/30 px-3 py-2 text-xs text-red-300">
@@ -145,13 +150,13 @@ export function SnapshotPanel({
       )}
 
       {snapshots.length === 0 ? (
-        <p className="text-xs text-zinc-600 text-center py-2">No snapshots yet</p>
+        <p className="text-xs text-zinc-600 text-center py-2">Backups appear here when you apply prices.</p>
       ) : (
         <div className="space-y-1.5 max-h-48 overflow-y-auto">
           {snapshots.map((s) => (
             <div
               key={s.id}
-              className="flex items-center justify-between gap-3 rounded-md border border-zinc-800/70 bg-zinc-950/50 px-3 py-2"
+              className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-md border border-zinc-800/70 bg-zinc-950/50 px-3 py-2"
             >
               <div className="min-w-0">
                 <p className="text-sm text-zinc-300 truncate">{s.label}</p>
@@ -159,7 +164,7 @@ export function SnapshotPanel({
                   {formatSnapshotDate(s.createdAt)} · {s.rows.length} territories
                 </p>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex flex-wrap items-center gap-2">
                 {confirmId === s.id ? (
                   <>
                     <button
@@ -187,7 +192,7 @@ export function SnapshotPanel({
                       title="Export as JSON"
                       aria-label={`Export snapshot: ${s.label}`}
                     >
-                      ↓ JSON
+                      Download backup
                     </button>
                     <button
                       onClick={() => setConfirmId(s.id)}
@@ -198,11 +203,13 @@ export function SnapshotPanel({
                     </button>
                     <button
                       onClick={() => {
+                        if (!window.confirm("Delete this saved backup? Your store prices will not change.")) return;
                         deleteSnapshot(s.id);
                         setSnapshots((prev) => prev.filter((x) => x.id !== s.id));
                       }}
                       className="text-xs text-zinc-600 hover:text-red-400"
                       title="Delete snapshot"
+                      disabled={busy}
                       aria-label={`Delete snapshot: ${s.label}`}
                     >
                       ✕
@@ -218,6 +225,7 @@ export function SnapshotPanel({
         Up to {MAX_SNAPSHOTS_PER_SCOPE} restore points are retained per pricing
         workspace; saving another replaces the oldest point.
       </p>
-    </div>
+      </div>
+    </details>
   );
 }

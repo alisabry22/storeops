@@ -728,16 +728,14 @@ export default function PricingPage() {
   if (!hydrated || !credentials) return null;
 
   return (
-    <main className="max-w-5xl mx-auto w-full px-6 py-10">
+    <main id="main-content" className="max-w-5xl mx-auto w-full px-6 py-10">
       <TopBar backToApps />
 
       <AppTabs appId={id} active="pricing" />
 
-      <h1 className="text-xl font-bold mb-1">Pricing matrix</h1>
+      <h1 className="text-xl font-bold mb-1">App download price</h1>
       <p className="text-sm text-zinc-400 mb-6">
-        Set a base price, preview all {currentPrices.length > 0 ? currentPrices.length : "~175"}{" "}
-        storefronts, override only the countries you want. One apply — instead
-        of an afternoon in ASC.
+        Choose what customers pay to download your app. Review country prices before applying.
       </p>
 
       {error && (
@@ -764,7 +762,7 @@ export default function PricingPage() {
       )}
 
       {/* ---- Sheet import flow ---- */}
-      <div className="card card-hero p-5 mb-6">
+      <details className="card p-5 mb-6"><summary className="cursor-pointer text-sm font-medium text-zinc-300">Adjust existing prices or import a spreadsheet</summary><div className="mt-5">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
           <h2 className="font-semibold">
             Import price sheet{" "}
@@ -777,7 +775,7 @@ export default function PricingPage() {
           getCsv={() => buildCsv(currentPrices)}
           platform="ios"
           strategy={strategy}
-          onStrategyChange={setStrategy}
+          onStrategyChange={(next) => { setStrategy(next); setImportPreview(null); }}
           onResult={async (csv, cap) => {
             setPreviewMovementCap(cap);
             setSheetText(csv);
@@ -786,7 +784,9 @@ export default function PricingPage() {
           disabled={currentPrices.length === 0}
           onExportCsv={exportCsv}
         />
-        <textarea
+        <details className="app-advanced mt-4"><summary>Import a spreadsheet instead</summary>
+              <textarea
+              aria-label="Price spreadsheet"
           value={sheetText}
           onChange={(e) => {
             setSheetText(e.target.value);
@@ -831,6 +831,9 @@ export default function PricingPage() {
                 : "Loading Apple price tiers (one-time)…"
               : "Preview import"}
           </button>
+            </div>
+            </details>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
           {importPreview && (
             <>
               <label className="flex items-center gap-1.5 text-xs text-zinc-400">
@@ -911,7 +914,7 @@ export default function PricingPage() {
             </div>
           </div>
         )}
-      </div>
+      </div></details>
 
       {/* ---- Change price flow ---- */}
       <div className="card p-5 mb-8">
@@ -923,6 +926,7 @@ export default function PricingPage() {
         </h2>
         <div className="flex flex-wrap items-center gap-3">
           <select
+            aria-label="App download price"
             value={selectedPointId}
             onChange={(e) => {
               setSelectedPointId(e.target.value);

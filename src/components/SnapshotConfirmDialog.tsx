@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { isCommunityEdition } from "@/lib/edition";
 
 interface Props {
   open: boolean;
@@ -33,6 +34,10 @@ export function SnapshotConfirmDialog({ open, defaultName = "", onSaveAndApply, 
         <p className="text-sm text-zinc-400 mb-4">
           Snapshots let you <span className="text-zinc-200">restore the previous storefront price grid</span> with one click. Pending mistakes are cancelled; effective changes are restored at the store&apos;s earliest permitted date.
         </p>
+
+        {isCommunityEdition && <p className="text-xs text-amber-200 mb-4">
+          Backups stay in this browser. To keep a separate copy before applying, cancel and use Price backups to save and download one.
+        </p>}
 
         <label className="block mb-4">
           <span className="text-xs text-zinc-500 mb-1.5 block">Snapshot name</span>

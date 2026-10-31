@@ -179,7 +179,7 @@ export default function LandingPage() {
   const { yearly: yearlyUrl, lifetime: lifetimeUrl } = useCheckoutUrls();
 
   return (
-    <main className="w-full overflow-hidden">
+    <main id="main-content" className="w-full overflow-hidden">
       <header className="fixed inset-x-0 top-0 z-40 border-b border-white/5 bg-zinc-950/75 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
           <Link href="/" className="text-lg font-semibold tracking-[-0.03em] text-white">Store<span className="text-emerald-400">Ops</span></Link>

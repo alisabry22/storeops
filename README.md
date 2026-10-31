@@ -23,6 +23,8 @@ revenue funds maintenance and continued open-source development.
 
 - Connects App Store Connect and Google Play using developer-provided keys.
 - Loads subscriptions, in-app products, and regional prices.
+- Prices monthly and yearly subscriptions together, with a worldwide comparison
+  of both plans, annual savings, and selectable countries before applying.
 - Builds deterministic worldwide pricing previews from official store data.
 - Enforces a maximum movement cap immediately before a pricing write.
 - Saves a complete pricing snapshot before applying.
@@ -33,6 +35,28 @@ revenue funds maintenance and continued open-source development.
 
 AI is optional and limited to selecting a pricing strategy and movement cap. It
 never generates the final production territory price grid.
+
+### Price plans together
+
+In an App Store app's **Subscriptions** page or the **Google Play** workspace,
+choose **Price plans together**, select monthly and yearly plans with equivalent
+access, and load their USA
+reference prices. Choose an existing market policy and either keep the USA
+annual discount, set a target discount, or localize the two anchors independently.
+The preview shows current and proposed local prices for both plans, the yearly
+monthly equivalent, and actual savings after store-tier rounding.
+
+Choose the countries to apply or export the comparison as CSV. Existing prices
+are staged within the selected movement cap unless you explicitly choose the
+full target. StoreOps checks for changes since preview and saves both recovery
+snapshots before applying. Apple processes each price separately; results show
+verification for each plan and any partial failure. Google Play uses declared
+monthly/yearly base-plan billing periods and Google's approved regional prices;
+base plans in the same product are updated in one request, while different
+products can partially succeed. Google changes affect new buyers only and never
+migrate existing subscriber cohorts. Backups remain available in each plan's
+individual view. Store-specific limitations are explicit; new user-facing
+features must cover both stores.
 
 ## Run Community Edition
 
@@ -48,7 +72,7 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ### Node.js
 
-Node.js 22 or newer is required.
+Node.js 24 LTS is required; use 24.22.2 or a newer patched 24.x release.
 
 ```bash
 git clone https://github.com/alisabry22/storeops.git
@@ -60,6 +84,10 @@ npm run dev
 
 Community mode needs no Clerk project, database, or Lemon Squeezy account. See
 [the self-hosting guide](docs/SELF_HOSTING.md) before exposing it publicly.
+The selected edition appears in the app header. Cloud requires a StoreOps
+account for synced backups and a paid plan for production store writes; your
+own Community installation requires neither. If you already have a `.env.local`,
+set `NEXT_PUBLIC_STOREOPS_EDITION=community` there and restart the server.
 
 ## Safety model
 
@@ -136,6 +164,29 @@ store writes.
 The stack is Next.js, React, TypeScript, Tailwind CSS, WebCrypto, Zustand, and
 Vitest. Cloud deployments additionally use Clerk, Neon/Drizzle, Lemon Squeezy,
 and Vercel Analytics.
+
+## Browser regression checks
+
+Run an isolated development server (keeps your normal dev server and its account
+session separate):
+
+```bash
+STOREOPS_TEST_BUILD_DIR=.next-qa NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY= CLERK_SECRET_KEY= npm run dev -- --port 3100
+```
+
+In another terminal, use an isolated Playwright CLI session:
+
+```bash
+npx --package @playwright/cli playwright-cli -s=storeops-qa open http://localhost:3100
+npx --package @playwright/cli playwright-cli -s=storeops-qa run-code --filename scripts/browser-fixture.js
+npx --package @playwright/cli playwright-cli -s=storeops-qa run-code --filename scripts/browser-pricing-checks.js
+npx --package @playwright/cli playwright-cli -s=storeops-qa run-code --filename scripts/browser-failure-checks.js
+npx --package @playwright/cli playwright-cli -s=storeops-qa run-code --filename scripts/browser-navigation-checks.js
+```
+
+The fixture intercepts all API requests; apply checks change only simulated
+prices. Screenshots and the comparison CSV are saved in `output/playwright/`.
+Account authentication is excluded from these core-workflow browser fixtures.
 
 ## Contributing and security
 

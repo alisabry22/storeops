@@ -14,7 +14,7 @@ const LAST_UPDATED = "July 11, 2026";
 
 export default function PrivacyPage() {
   return (
-    <main className="max-w-2xl mx-auto px-6 py-14">
+    <main id="main-content" className="max-w-2xl mx-auto px-6 py-14">
       <Link
         href="/"
         className="text-sm text-emerald-400 hover:text-emerald-300 mb-8 inline-block"

@@ -17,6 +17,21 @@ Open `http://localhost:3000`. To bind another host port:
 STOREOPS_PORT=8080 docker compose up --build -d
 ```
 
+Release tags also trigger a Community image build at
+`ghcr.io/alisabry22/storeops:<release-tag>`. Once the first tagged image is
+published and the package is public, replace `<release-tag>` with a published
+version (for example, `v1.0.0`) and run:
+
+```bash
+STOREOPS_VERSION=v1.0.0 # Replace with an actual published release tag.
+docker run -d --name storeops -p 127.0.0.1:3000:3000 "ghcr.io/alisabry22/storeops:$STOREOPS_VERSION"
+```
+
+The published image is built for localhost. Build with Compose and set
+`STOREOPS_PUBLIC_URL` for a different canonical URL; changing it at runtime
+cannot update the compiled public settings. Publishing a first image requires
+the repository owner to make the GHCR package public in GitHub package settings.
+
 For a public deployment, set the canonical HTTPS URL at build time:
 
 ```bash
@@ -35,7 +50,22 @@ npm run build
 npm start
 ```
 
-Node.js 22 or newer is required.
+Node.js 24 LTS is required; use 24.22.2 or a newer patched 24.x release.
+
+If `.env.local` already exists, set `NEXT_PUBLIC_STOREOPS_EDITION=community`
+in that file and restart the development server or rebuild for production.
+The header says “Community · self-hosted” when the setting is active. Do not
+reuse Cloud credentials for this setup.
+
+## Backing up prices
+
+Community backups are stored in the current browser and origin; they do not
+sync between devices. Before applying prices, open **Price backups** in the
+individual pricing view, save a named backup, and use **Download backup** to
+keep a separate JSON copy. For paired plans, do this for each plan. To recover
+on another browser, connect the same store and app, open the corresponding
+individual pricing view, and import the file. StoreOps still saves a fresh
+local snapshot immediately before each pricing write.
 
 ## Optional AI assistant
 

@@ -10,11 +10,11 @@ export interface Strategy {
 }
 
 export const STRATEGIES: Strategy[] = [
-  { key: "ppp", label: "Market access", tagline: "Controlled regional adjustment", emoji: "⚖️" },
-  { key: "growth", label: "Growth", tagline: "Conservative acquisition test", emoji: "🚀" },
-  { key: "revenue", label: "Revenue", tagline: "Bounded revenue hypothesis", emoji: "💰", star: true },
-  { key: "retention", label: "Retention", tagline: "No automatic price movement", emoji: "🔒" },
-  { key: "enterprise", label: "Professional", tagline: "Bounded professional positioning", emoji: "🏢" },
+  { key: "ppp", label: "Market access", tagline: "Lower prices in price-sensitive markets", emoji: "⚖️" },
+  { key: "growth", label: "Growth", tagline: "Lower prices across all markets", emoji: "🚀" },
+  { key: "revenue", label: "Revenue", tagline: "Higher in standard markets, lower in value markets", emoji: "💰" },
+  { key: "retention", label: "Keep baseline", tagline: "Use store prices without a market adjustment", emoji: "🔒" },
+  { key: "enterprise", label: "Premium", tagline: "Higher prices in mid and standard markets", emoji: "🏢" },
 ];
 
 export function getStrategy(key: PricingStrategy): Strategy {

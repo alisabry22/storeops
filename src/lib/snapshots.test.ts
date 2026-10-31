@@ -47,6 +47,32 @@ afterEach(() => {
 });
 
 describe("required pricing snapshots", () => {
+  it("allows Community backups without an account even when Clerk is configured", async () => {
+    vi.stubEnv("NEXT_PUBLIC_STOREOPS_EDITION", "community");
+    vi.stubEnv("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", "pk_test_storeops");
+    const storage = installBrowserStorage();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const { takeRequiredSnapshot } = await import("./snapshots");
+
+    await takeRequiredSnapshot(snapshotInput);
+
+    expect(JSON.parse(storage.getItem("storeops.snapshots.v1") ?? "[]")).toHaveLength(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("tells signed-out Cloud users to sign in and blocks the write", async () => {
+    vi.stubEnv("NEXT_PUBLIC_STOREOPS_EDITION", "cloud");
+    vi.stubEnv("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", "pk_test_storeops");
+    installBrowserStorage();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: false, status: 401, json: vi.fn().mockResolvedValue({ error: "Unauthorized" }),
+    }));
+    const { takeRequiredSnapshot } = await import("./snapshots");
+
+    await expect(takeRequiredSnapshot(snapshotInput)).rejects.toThrow(/Sign in to your StoreOps Cloud account/);
+  });
+
   it("keeps the local restore point but blocks the store write when cloud confirmation fails", async () => {
     vi.stubEnv("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", "pk_test_storeops");
     const storage = installBrowserStorage();

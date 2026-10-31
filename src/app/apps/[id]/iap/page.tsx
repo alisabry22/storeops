@@ -555,15 +555,14 @@ export default function IapPage() {
   if (!hydrated || !credentials) return null;
 
   return (
-    <main className="max-w-5xl mx-auto w-full px-6 py-10">
+    <main id="main-content" className="max-w-5xl mx-auto w-full px-6 py-10">
       <TopBar backToApps />
 
       <AppTabs appId={id} active="iap" />
 
-      <h1 className="text-xl font-bold mb-1">In-App Purchase pricing</h1>
+      <h1 className="text-xl font-bold mb-1">In-app product prices</h1>
       <p className="text-sm text-zinc-400 mb-6">
-        Manage prices across all 175 storefronts for your consumables, non-consumables, and
-        lifetime plans. One apply = one request to Apple.
+        Set country prices for unlocks, credits, and other one-time purchases.
       </p>
 
       {error && (
@@ -592,7 +591,7 @@ export default function IapPage() {
       {/* IAP selector */}
       <div className="card p-5 mb-6">
         <div className="flex items-baseline justify-between mb-3">
-          <h2 className="font-semibold">Select in-app purchase</h2>
+          <h2 className="font-semibold">Choose a product</h2>
           {iaps.length > 1 && (
             <span className="text-xs text-zinc-500 font-mono">{iaps.length} IAPs</span>
           )}
@@ -604,11 +603,12 @@ export default function IapPage() {
           <p className="text-sm text-zinc-400">No in-app purchases found for this app.</p>
         ) : (
           <select
+            aria-label="In-app product"
             value={selectedIapId}
             onChange={(e) => setSelectedIapId(e.target.value)}
             className="w-full max-w-md rounded-md bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
           >
-            <option value="">Choose an IAP…</option>
+            <option value="">Choose a product…</option>
             {iaps.map((i) => (
               <option key={i.id} value={i.id}>
                 {i.attributes.name} · {formatIapType(i.attributes.inAppPurchaseType)} · {i.attributes.productId}
@@ -624,9 +624,9 @@ export default function IapPage() {
           <div className="card card-hero p-5 mb-6">
             <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
               <h2 className="font-semibold">
-                Import price sheet{" "}
+                Adjust your prices{" "}
                 <span className="text-zinc-500 font-normal text-sm">
-                  Controlled policy or spreadsheet
+                  Choose a goal, then preview the changes
                 </span>
               </h2>
               </div>
@@ -634,7 +634,7 @@ export default function IapPage() {
               getCsv={() => buildCsv(currentPrices.map((r) => ({ territoryId: r.territoryId, currency: r.currency, customerPrice: r.customerPrice })))}
               platform="ios"
               strategy={strategy}
-              onStrategyChange={setStrategy}
+              onStrategyChange={(next) => { setStrategy(next); setImportPreview(null); }}
               onResult={async (csv, cap) => {
                 setPreviewMovementCap(cap);
                 setSheetText(csv);
@@ -643,7 +643,9 @@ export default function IapPage() {
               disabled={currentPrices.length === 0}
               onExportCsv={exportCsv}
             />
-            <textarea
+            <details className="app-advanced mt-4"><summary>Import a spreadsheet instead</summary>
+              <textarea
+              aria-label="Price spreadsheet"
               value={sheetText}
               onChange={(e) => {
                 setSheetText(e.target.value);
@@ -690,6 +692,9 @@ export default function IapPage() {
                     : "Loading Apple price tiers (one-time per IAP)…"
                   : "Preview import"}
               </button>
+            </div>
+            </details>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
 
               {importPreview &&
                 (!applied ? (

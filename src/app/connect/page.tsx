@@ -62,7 +62,7 @@ export default function ConnectPage() {
 
   return (
     <RequireAccount>
-    <main className="max-w-2xl mx-auto px-6 py-14">
+    <main id="main-content" className="max-w-2xl mx-auto px-6 py-14">
       <Link
         href="/"
         className="text-sm text-emerald-400 hover:text-emerald-300 mb-8 inline-block"
@@ -74,18 +74,14 @@ export default function ConnectPage() {
         Connect a store
       </h1>
       <p className="text-zinc-400 mb-10">
-        Free to connect, browse, and preview everything. Your keys become
-        non-extractable browser keys — they never touch our servers.
+        Choose your store. Your private key stays in this browser.
       </p>
 
       {/* ---------- App Store Connect ---------- */}
       <div className="card card-hero p-6 mb-6">
         <h2 className="font-semibold text-lg mb-1"> App Store Connect</h2>
         <p className="text-sm text-zinc-400 mb-5 leading-relaxed">
-          Your .p8 becomes a{" "}
-          <strong className="text-zinc-200">non-extractable browser key</strong>{" "}
-          — its raw key material cannot be exported after import, and it signs
-          20-minute tokens locally.
+          Add the two IDs and key file from your App Store Connect account.
         </p>
 
         <form onSubmit={connect} className="space-y-4">
@@ -144,20 +140,18 @@ export default function ConnectPage() {
           )}
         </form>
 
-        <p className="mt-4 text-xs text-zinc-500 leading-relaxed">
+        <details className="app-advanced mt-4"><summary>Where do I find these?</summary><p className="text-sm text-zinc-400 leading-relaxed">
           App Store Connect → Users and Access → Integrations → App Store
           Connect API. Role:{" "}
           <strong className="text-zinc-400">App Manager</strong> is enough.
-        </p>
+        </p></details>
       </div>
 
       {/* ---------- Google Play ---------- */}
       <div className="card p-6">
         <h2 className="font-semibold text-lg mb-1">🤖 Google Play</h2>
         <p className="text-sm text-zinc-400 mb-4 leading-relaxed">
-          Connect with a service-account JSON — same privacy model, the key
-          stays in your browser. Manage in-app product and subscription prices
-          across every Play region.
+          Manage Android subscription and in-app product prices.
         </p>
         <Link
           href="/play"

@@ -205,7 +205,7 @@ export default function MetadataEditorPage() {
   if (!hydrated || !credentials) return null;
 
   return (
-    <main className="max-w-5xl mx-auto w-full px-6 py-10">
+    <main id="main-content" className="max-w-5xl mx-auto w-full px-6 py-10">
       <TopBar backToApps />
 
       <AppTabs appId={id} active="metadata" />
@@ -228,9 +228,11 @@ export default function MetadataEditorPage() {
         <>
           <div className="flex flex-wrap items-center justify-between gap-4 mb-2">
             <div>
-              <h1 className="text-xl font-bold">Metadata editor</h1>
+              <h1 className="text-xl font-bold">Edit your store listing</h1>
+              <p className="mt-1 text-sm text-zinc-400">Update descriptions and release notes in each language.</p>
               <div className="flex items-center gap-2 mt-1">
                 <select
+                  aria-label="App version"
                   value={selectedVersion.id}
                   onChange={(e) =>
                     setSelectedVersion(
@@ -248,7 +250,7 @@ export default function MetadataEditorPage() {
                 </select>
                 {!versionEditable && (
                   <span className="text-xs text-amber-400 bg-amber-950/50 border border-amber-900 rounded px-2 py-0.5">
-                    read-only: create a new version in ASC to edit
+                    Read-only · create a new App Store version to edit
                   </span>
                 )}
               </div>
@@ -290,7 +292,7 @@ export default function MetadataEditorPage() {
           )}
 
           {/* Field tabs */}
-          <div className="flex gap-1 mb-4 border-b border-zinc-800">
+          <div className="mb-4 grid grid-cols-2 gap-1 border-b border-zinc-800 sm:flex">
             {VERSION_FIELDS.map((f) => (
               <button
                 key={f.key}
@@ -359,12 +361,13 @@ export default function MetadataEditorPage() {
                           className="text-xs text-zinc-400 hover:text-emerald-400 disabled:opacity-30"
                           title={`Copy this ${fieldDef.label} to all other locales`}
                         >
-                          Apply to all →
+                            Copy to all languages
                         </button>
                       </div>
                     </div>
                     {fieldDef.multiline ? (
                       <textarea
+                        aria-label={`${fieldDef.label} — ${loc.attributes.locale}`}
                         value={value}
                         readOnly={!versionEditable}
                         onChange={(e) => setCell(loc.id, activeField, e.target.value)}
@@ -373,6 +376,7 @@ export default function MetadataEditorPage() {
                       />
                     ) : (
                       <input
+                        aria-label={`${fieldDef.label} — ${loc.attributes.locale}`}
                         value={value}
                         readOnly={!versionEditable}
                         onChange={(e) => setCell(loc.id, activeField, e.target.value)}

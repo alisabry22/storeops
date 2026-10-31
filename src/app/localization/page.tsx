@@ -28,7 +28,7 @@ const LOCALES = [
 
 export default function LocalizationPage() {
   return (
-    <main className="max-w-3xl mx-auto px-6 py-16">
+    <main id="main-content" className="max-w-3xl mx-auto px-6 py-16">
       <Link href="/" className="text-sm text-emerald-400 hover:text-emerald-300 mb-8 inline-block">
         ← StoreOps
       </Link>

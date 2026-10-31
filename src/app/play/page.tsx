@@ -10,6 +10,9 @@ import { AiRepricePanel } from "@/components/AiRepricePanel";
 import { UpdateStatus } from "@/components/UpdateStatus";
 import { SnapshotPanel } from "@/components/SnapshotPanel";
 import { GooglePlayMetadataEditor } from "@/components/GooglePlayMetadataEditor";
+import { PlanPricingWorkspace } from "@/components/PlanPricingWorkspace";
+import { AppIcon } from "@/components/AppIcon";
+import { googlePlanPricingStore } from "@/lib/gp/plan-pricing-store";
 import { useIsPro } from "@/lib/license";
 import { useHydrated } from "@/lib/use-hydrated";
 import {
@@ -19,7 +22,8 @@ import {
 } from "@/lib/snapshots";
 import { buildCsv, parsePriceSheet } from "@/lib/pricing-import";
 import { findPriceMismatches } from "@/lib/price-verification";
-import { STRATEGIES, type PricingStrategy } from "@/lib/pricing-strategies";
+import { type PricingStrategy } from "@/lib/pricing-strategies";
+import { PricingStrategyPicker } from "@/components/PricingStrategyPicker";
 import {
   findMovementCapViolations,
   movementCapErrorMessage,
@@ -132,6 +136,10 @@ export default function PlayPage() {
   const [iaps, setIaps] = useState<IapProduct[]>([]);
   const [subs, setSubs] = useState<GpSubscription[]>([]);
   const [selectedRefKey, setSelectedRefKey] = useState("");
+  const [workspaceMode, setWorkspaceMode] = useState<"single" | "together">("together");
+  const [pairedBusy, setPairedBusy] = useState(false);
+  const [workspaceTab, setWorkspaceTab] = useState<"pricing" | "listing">("pricing");
+  const pairedStore = useMemo(() => gpCredentials ? googlePlanPricingStore(selectedPackage, gpCredentials, subs) : null, [selectedPackage, gpCredentials, subs]);
 
   // Import flow
   const [sheetText, setSheetText] = useState("");
@@ -1467,10 +1475,10 @@ export default function PlayPage() {
 
   return (
     <RequireAccount>
-      <main className="max-w-5xl mx-auto w-full px-6 py-10">
+      <main id="main-content" className="max-w-5xl mx-auto w-full px-6 py-10">
         {/* Play-specific header — Apple credentials/TopBar don't apply here */}
-        <header className="flex items-center justify-between mb-10">
-          <div className="flex items-center gap-3">
+        <header className="mb-8 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-3">
             <Link
               href="/"
               className="text-sm text-zinc-400 hover:text-zinc-200 transition"
@@ -1499,6 +1507,7 @@ export default function PlayPage() {
             </Link>
             {gpCredentials && (
               <button
+                disabled={pairedBusy || applying || anchorLoading}
                 onClick={() => clearGpCredentials()}
                 className="text-sm text-zinc-500 hover:text-zinc-200 transition"
               >
@@ -1540,13 +1549,7 @@ export default function PlayPage() {
           <div className="card card-hero p-6 max-w-xl">
             <h2 className="font-semibold text-lg mb-1">Connect Google Play</h2>
             <p className="text-sm text-zinc-400 mb-4 leading-relaxed">
-              Upload your service-account JSON. Same privacy model as the Apple
-              side: the key becomes a{" "}
-              <strong className="text-zinc-200">
-                non-extractable browser key
-              </strong>{" "}
-              — its raw key material cannot be exported after import.
-              It never touches our servers.
+              Upload your Google service-account key to connect your Android apps. Your private key stays in this browser.
             </p>
             <label className="block">
               <input
@@ -1561,17 +1564,15 @@ export default function PlayPage() {
                   e.target.value = "";
                 }}
               />
-              <span
+              <button type="button"
                 className="inline-block cursor-pointer rounded-md bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 transition"
                 onClick={() => document.getElementById("gp-json-file")?.click()}
+                disabled={connecting}
               >
-                {connecting ? "Importing key…" : "Choose service-account JSON"}
-              </span>
+                {connecting ? "Importing key…" : "Choose Google key file"}
+              </button>
             </label>
-            <div className="mt-5 text-xs text-zinc-500 leading-relaxed space-y-1">
-              <p className="font-semibold text-zinc-400">
-                Setup (one time, ~3 minutes):
-              </p>
+            <details className="app-advanced mt-5"><summary>How do I create a Google key?</summary><div className="space-y-2 text-sm text-zinc-400">
               <p>
                 1. Google Cloud Console → create/select a project → enable the{" "}
                 <strong>Google Play Android Developer API</strong>
@@ -1585,12 +1586,18 @@ export default function PlayPage() {
                 <strong>“Manage store presence” + “Manage orders”</strong> (or
                 Admin)
               </p>
-            </div>
+            </div></details>
           </div>
         ) : (
           <>
             {/* ---- Packages ---- */}
-            <div className="card p-5 mb-6">
+            <fieldset disabled={pairedBusy || applying || anchorLoading || snapshotDialog} className="card min-w-0 p-5 mb-6">
+              <legend className="sr-only">Choose your Google Play app</legend>
+              <details open={!selectedPackage}>
+              <summary className="flex min-h-11 cursor-pointer flex-wrap items-center justify-between gap-2 text-sm font-medium">
+                <span>Your app</span><span className="break-all font-mono text-xs text-emerald-300">{selectedPackage || "Add an app"}</span>
+              </summary>
+              <div className="mt-4">
               <div className="flex items-baseline justify-between mb-1">
                 <h2 className="font-semibold">Your apps</h2>
                 <span className="text-xs text-zinc-500 font-mono truncate max-w-[50%]">
@@ -1598,8 +1605,7 @@ export default function PlayPage() {
                 </span>
               </div>
               <p className="text-xs text-zinc-500 mb-3">
-                Google&apos;s API has no “list apps” endpoint — add each
-                app&apos;s package name once (e.g. com.yourcompany.app).
+                Add the package name from Play Console once (e.g. com.yourcompany.app).
               </p>
               <div className="flex gap-2 mb-3 max-w-md">
                 <input
@@ -1638,9 +1644,8 @@ export default function PlayPage() {
                           ? "border-emerald-700 bg-emerald-950/40 text-emerald-300"
                           : "border-zinc-700 text-zinc-400 hover:border-zinc-500"
                       }`}
-                      onClick={() => setSelectedPackage(pkg)}
                     >
-                      {pkg}
+                      <button type="button" className="min-h-8 break-all text-left" aria-pressed={selectedPackage === pkg} onClick={() => setSelectedPackage(pkg)}>{pkg}</button>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -1656,19 +1661,44 @@ export default function PlayPage() {
                   ))}
                 </div>
               )}
-            </div>
+              </div>
+              </details>
+            </fieldset>
 
-            {/* ---- Store listing metadata ---- */}
-            {selectedPackage && (
+            {selectedPackage && <nav aria-label="Google Play tasks" className="mb-6 grid grid-cols-2 gap-2">
+              {(["pricing", "listing"] as const).map((tab) => <button key={tab} type="button" aria-pressed={workspaceTab === tab}
+                disabled={pairedBusy || applying || anchorLoading || snapshotDialog} onClick={() => setWorkspaceTab(tab)}
+                className={`flex min-h-16 items-center gap-3 rounded-lg border px-4 py-3 text-left disabled:opacity-50 ${workspaceTab === tab ? "border-emerald-700 bg-emerald-950/30 text-emerald-300" : "border-zinc-700 text-zinc-300 hover:border-zinc-500"}`}>
+                <AppIcon name={tab === "pricing" ? "price" : "listing"} className="size-5 shrink-0" />
+                <span className="min-w-0 text-sm font-medium">{tab === "pricing" ? "Pricing" : "Store listing"}<span className="mt-1 hidden text-xs font-normal text-zinc-400 sm:block">{tab === "pricing" ? "Compare and set local prices" : "Descriptions and release notes"}</span></span>
+              </button>)}
+            </nav>}
+
+            {/* Keep listing drafts mounted when switching tasks. */}
+            {selectedPackage && <div hidden={workspaceTab !== "listing"}>
               <GooglePlayMetadataEditor
                 credentials={gpCredentials}
                 packageName={selectedPackage}
                 isPro={isPro}
               />
-            )}
+            </div>}
+
+            <div hidden={workspaceTab !== "pricing"}>
+            {selectedPackage && <div className="mb-6 space-y-5">
+              <div><h2 className="text-lg font-semibold">{workspaceMode === "together" ? "Subscription prices" : "Product prices"}</h2><p className="mt-1 text-sm text-zinc-400">{workspaceMode === "together" ? "Plan monthly and yearly prices in one place, before changing your store." : "Set local prices for a subscription or one-time product."}</p></div>
+              <div className="flex flex-wrap gap-2" aria-label="Pricing workspace">
+                {(["together", "single"] as const).map((mode) => <button key={mode} type="button" aria-pressed={workspaceMode === mode}
+                  disabled={pairedBusy || applying || anchorLoading || snapshotDialog}
+                  className={`min-h-11 rounded-md border px-4 py-2 text-sm disabled:opacity-50 ${workspaceMode === mode ? "border-emerald-700 bg-emerald-950/40 text-emerald-300" : "border-zinc-700 text-zinc-300 hover:border-zinc-500"}`}
+                  onClick={() => { if (workspaceMode === mode) return; setWorkspaceMode(mode); setImportPreview(null); setGoogleApprovedPreview(null); setApplySummary(null); setSnapRefresh((value) => value + 1); if (mode === "single") void loadProducts(); }}>
+                  {mode === "together" ? "Price plans together" : "One product"}
+                </button>)}
+              </div>
+              {workspaceMode === "together" && pairedStore && <PlanPricingWorkspace key={selectedPackage} store={pairedStore} loading={loadingProducts} onBusyChange={setPairedBusy} />}
+            </div>}
 
             {/* ---- Product selector ---- */}
-            {selectedPackage && (
+            {selectedPackage && workspaceMode === "single" && (
               <div className="card p-5 mb-6">
                 <h2 className="font-semibold mb-3">Select product</h2>
                 {loadingProducts ? (
@@ -1682,6 +1712,7 @@ export default function PlayPage() {
                   </p>
                 ) : (
                   <select
+                    aria-label="Choose product"
                     value={selectedRefKey}
                     onChange={(e) => {
                       setSelectedRefKey(e.target.value);
@@ -1703,15 +1734,15 @@ export default function PlayPage() {
               </div>
             )}
 
-            {selectedRef && (
+            {selectedRef && workspaceMode === "single" && (
               <>
                 {/* ---- Import sheet ---- */}
                 <div className="card card-hero p-5 mb-6">
                   <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
                     <h2 className="font-semibold">
-                      Import price sheet{" "}
+                      Set local prices{" "}
                       <span className="text-zinc-500 font-normal text-sm">
-                        Controlled policy or spreadsheet
+                        Choose a US price or adjust existing prices
                       </span>
                     </h2>
                     <div className="flex gap-2">
@@ -1730,24 +1761,24 @@ export default function PlayPage() {
                       onClick={() => setPricingMode("anchor")}
                       className={`rounded-md px-3 py-1.5 text-xs transition ${pricingMode === "anchor" ? "bg-emerald-950 text-emerald-300" : "text-zinc-500 hover:text-zinc-200"}`}
                     >
-                      New worldwide anchor
+                      Set a US price
                     </button>
                     <button
                       onClick={() => setPricingMode("adjust")}
                       className={`rounded-md px-3 py-1.5 text-xs transition ${pricingMode === "adjust" ? "bg-emerald-950 text-emerald-300" : "text-zinc-500 hover:text-zinc-200"}`}
                     >
-                      Adjust current grid
+                      Adjust existing prices
                     </button>
                   </div>
 
                   {pricingMode === "anchor" ? (
                     <div className="mb-4">
                       <p className="mb-3 text-xs leading-relaxed text-zinc-500">
-                        Google&apos;s live conversion engine builds the baseline from one USD price. Your market policy and movement cap are applied only after Google returns valid local currencies.
+                        Choose a US price. Google calculates local currencies; your pricing goal adjusts each market.
                       </p>
                       <div className="mb-3 grid gap-3 sm:grid-cols-2">
                         <label className="text-xs text-zinc-400">
-                          <span className="mb-1 block">USA anchor</span>
+                          <span className="mb-1 block">US price · USD</span>
                           <span className="flex items-center gap-2">
                             <span className="text-zinc-500">$</span>
                             <input
@@ -1755,13 +1786,13 @@ export default function PlayPage() {
                               min="0.01"
                               step="0.01"
                               value={anchorUsd}
-                              onChange={(event) => setAnchorUsd(Math.max(0.01, Number(event.target.value) || 0.01))}
+                              onChange={(event) => { setAnchorUsd(Math.max(0.01, Number(event.target.value) || 0.01)); setImportPreview(null); setGoogleApprovedPreview(null); }}
                               className="w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100 focus:border-emerald-500 focus:outline-none"
                             />
                           </span>
                         </label>
                         <label className="text-xs text-zinc-400">
-                          <span className="mb-1 block">Maximum movement this apply</span>
+                          <span className="mb-1 block">Limit changes to existing prices (%)</span>
                           <span className="flex items-center gap-2">
                             <input
                               type="number"
@@ -1775,17 +1806,7 @@ export default function PlayPage() {
                           </span>
                         </label>
                       </div>
-                      <div className="mb-3 flex flex-wrap gap-2">
-                        {STRATEGIES.map((item) => (
-                          <button
-                            key={item.key}
-                            onClick={() => setStrategy(item.key)}
-                            className={`rounded border px-2.5 py-1 text-xs ${strategy === item.key ? "border-emerald-700 bg-emerald-950/60 text-emerald-300" : "border-zinc-700 text-zinc-400"}`}
-                          >
-                            {item.emoji} {item.label}
-                          </button>
-                        ))}
-                      </div>
+                      <div className="mb-4"><PricingStrategyPicker value={strategy} onChange={(next) => { setStrategy(next); setImportPreview(null); setGoogleApprovedPreview(null); }} disabled={anchorLoading || applying} /></div>
                       <label className="mb-3 flex items-start gap-2 text-xs text-zinc-400">
                         <input
                           type="checkbox"
@@ -1793,14 +1814,14 @@ export default function PlayPage() {
                           onChange={(event) => setApplyFullAnchorTarget(event.target.checked)}
                           className="mt-0.5"
                         />
-                        Apply the full worldwide target now instead of staging changes within the movement cap.
+                        Use the full target for launch (no change limit)
                       </label>
                       <button
                         onClick={generateAnchorPreview}
                         disabled={anchorLoading || currentPrices.length === 0}
                         className="w-full rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-600 disabled:opacity-40"
                       >
-                        {anchorLoading ? "Building Google baseline…" : "Generate anchored preview"}
+                        {anchorLoading ? "Building Google baseline…" : "Preview local prices"}
                       </button>
                     </div>
                   ) : (
@@ -1808,7 +1829,7 @@ export default function PlayPage() {
                       getCsv={() => buildCsv(exportableRows())}
                       platform="android"
                       strategy={strategy}
-                      onStrategyChange={setStrategy}
+                      onStrategyChange={(next) => { setStrategy(next); setImportPreview(null); }}
                       onResult={(data, cap) => {
                         setPreviewMovementCap(cap);
                         acceptGeneratedPolicy(data);
@@ -1826,7 +1847,9 @@ export default function PlayPage() {
                     </div>
                   )}
 
-                  <textarea
+                  <details className="app-advanced mt-4"><summary>Import a spreadsheet instead</summary>
+              <textarea
+              aria-label="Price spreadsheet"
                     value={sheetText}
                     onChange={(e) => {
                       setSheetText(e.target.value);
@@ -1873,6 +1896,9 @@ export default function PlayPage() {
                     >
                       Preview changes
                     </button>
+            </div>
+            </details>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
                     {importPreview && (
                       <button
                         onClick={() =>
@@ -2000,6 +2026,7 @@ export default function PlayPage() {
                 )}
               </>
             )}
+            </div>
           </>
         )}
 

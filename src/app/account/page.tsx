@@ -29,7 +29,7 @@ function AccountContent() {
     plan === "lifetime" ? "Lifetime" : plan === "pro" ? "Pro" : "Free";
 
   return (
-    <main className="max-w-2xl mx-auto px-6 py-14">
+    <main id="main-content" className="max-w-2xl mx-auto px-6 py-14">
       <Link
         href="/apps"
         className="text-sm text-emerald-400 hover:text-emerald-300 mb-8 inline-block"
