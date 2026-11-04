@@ -1,0 +1,48 @@
+- generic [active] [ref=f2e1]:
+  - generic [ref=f2e2]:
+    - generic [ref=f2e4]:
+      - heading "Monthly Budget Calculator" [level=1] [ref=f2e5]
+      - paragraph [ref=f2e6]: Plan your monthly budget and track income vs expenses.
+    - generic [ref=f2e7]:
+      - generic [ref=f2e8]:
+        - heading "Calculate Your Monthly Budget" [level=2] [ref=f2e9]
+        - generic [ref=f2e10]:
+          - generic [ref=f2e11]:
+            - generic [ref=f2e12]: Monthly Income
+            - spinbutton "5000" [ref=f2e13]
+          - generic [ref=f2e14]:
+            - heading "Monthly Expenses" [level=3] [ref=f2e15]
+            - generic [ref=f2e16]:
+              - spinbutton "Housing/Rent" [ref=f2e17]
+              - spinbutton "Utilities" [ref=f2e18]
+              - spinbutton "Food & Groceries" [ref=f2e19]
+              - spinbutton "Transportation" [ref=f2e20]
+              - spinbutton "Other Expenses" [ref=f2e21]
+      - region [ref=f2e22]:
+        - heading "Build a monthly budget from the numbers you actually use" [level=2] [ref=f2e23]
+        - generic [ref=f2e24]:
+          - paragraph [ref=f2e25]: Enter take-home income rather than gross salary, then group spending into fixed costs, flexible essentials, debt payments, savings, and optional purchases. This gives you a clearer picture of the money that is truly available each month.
+          - paragraph [ref=f2e26]: If the result shows a deficit, begin with the categories you can change without missing a bill. Small reductions across several flexible categories are often easier to maintain than one severe cut. If there is a surplus, assign it deliberately to savings, debt, or a future expense instead of leaving it unplanned.
+          - paragraph [ref=f2e27]: A budget is a working estimate, not a one-time promise. Compare the plan with your real spending each week and revise categories when prices, income, or priorities change.
+      - generic [ref=f2e38]:
+        - heading "Ready to put the plan into practice?" [level=3] [ref=f2e42]
+        - paragraph [ref=f2e43]: Use Vocash alongside this calculator to capture spending by voice, review entries later, and keep your day-to-day numbers current.
+        - generic [ref=f2e44]:
+          - link "Download on the App Store" [ref=f2e45] [cursor=pointer]:
+            - /url: https://apps.apple.com/us/app/vocash-ai-expense-tracker/id6752502696
+          - link "Get it on Google Play" [ref=f2e49] [cursor=pointer]:
+            - /url: https://play.google.com/store/apps/details?id=com.voocash.app
+        - generic [ref=f2e53]:
+          - generic [ref=f2e54]: Voice-first tracking
+          - generic [ref=f2e55]: •
+          - generic [ref=f2e56]: Edit entries anytime
+          - generic [ref=f2e57]: •
+          - generic [ref=f2e58]: Works on iPhone and Android
+        - generic [ref=f2e59]:
+          - link "Download page" [ref=f2e60] [cursor=pointer]:
+            - /url: /download
+          - link "Explore features" [ref=f2e61] [cursor=pointer]:
+            - /url: /features
+          - link "Privacy details" [ref=f2e62] [cursor=pointer]:
+            - /url: /privacy
+  - alert [ref=f2e63]

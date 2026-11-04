@@ -1,0 +1,45 @@
+- generic [active] [ref=f3e1]:
+  - generic [ref=f3e2]:
+    - navigation [ref=f3e3]:
+      - generic [ref=f3e5]:
+        - generic [ref=f3e6]: Vocash
+        - generic [ref=f3e12]:
+          - link "Voice Tracker" [ref=f3e13] [cursor=pointer]:
+            - /url: /voice-expense-tracker
+          - link "Blog" [ref=f3e14] [cursor=pointer]:
+            - /url: /blog
+          - link "Features" [ref=f3e15] [cursor=pointer]:
+            - /url: /features
+          - link "FAQ" [ref=f3e16] [cursor=pointer]:
+            - /url: /faq
+          - link "Calculators" [ref=f3e17] [cursor=pointer]:
+            - /url: /tools
+          - link "Download" [ref=f3e18] [cursor=pointer]:
+            - /url: "#download"
+        - link "Get Started" [ref=f3e19] [cursor=pointer]:
+          - /url: "#download"
+    - generic [ref=f3e22]:
+      - generic [ref=f3e23]:
+        - generic [ref=f3e24]: Voice Expense Tracker App
+        - heading "Track Expenses by Speaking, Not Typing" [level=1] [ref=f3e26]: Track Expenses by Speaking,Not Typing
+        - paragraph [ref=f3e27]: Vocash is the voice expense tracker app for busy people who want a faster way to log daily spending. Say "Spent $12 on lunch" and keep moving.
+        - generic [ref=f3e28]:
+          - generic [ref=f3e29]:
+            - link "Download on the App Store" [ref=f3e31] [cursor=pointer]:
+              - /url: https://apps.apple.com/us/app/vocash-ai-expense-tracker/id6752502696
+              - generic [ref=f3e35]:
+                - generic [ref=f3e36]: Download on the
+                - generic [ref=f3e37]: App Store
+            - link "GET IT ON Google Play" [ref=f3e39] [cursor=pointer]:
+              - /url: https://play.google.com/store/apps/details?id=com.voocash.app
+              - generic [ref=f3e47]:
+                - generic [ref=f3e48]: GET IT ON
+                - generic [ref=f3e49]: Google Play
+          - link "See How Voice Logging Works" [ref=f3e50] [cursor=pointer]:
+            - /url: "#how-it-works"
+      - generic [ref=f3e53]: Live Demo
+      - generic [ref=f3e69]:
+        - generic [ref=f3e70]: Free to start
+        - generic [ref=f3e74]: Edit entries anytime
+        - generic [ref=f3e78]: Built for quick daily logging
+  - alert [ref=f3e91]

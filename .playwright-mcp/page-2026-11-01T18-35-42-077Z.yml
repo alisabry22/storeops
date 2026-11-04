@@ -1,0 +1,365 @@
+- generic [active] [ref=f1e1]:
+  - generic [ref=f1e2]:
+    - navigation [ref=f1e3]:
+      - generic [ref=f1e5]:
+        - generic [ref=f1e6]: Vocash
+        - generic [ref=f1e12]:
+          - link "Voice Tracker" [ref=f1e13] [cursor=pointer]:
+            - /url: /voice-expense-tracker
+          - link "Blog" [ref=f1e14] [cursor=pointer]:
+            - /url: /blog
+          - link "Features" [ref=f1e15] [cursor=pointer]:
+            - /url: /features
+          - link "FAQ" [ref=f1e16] [cursor=pointer]:
+            - /url: /faq
+          - link "Calculators" [ref=f1e17] [cursor=pointer]:
+            - /url: /tools
+          - link "Download" [ref=f1e18] [cursor=pointer]:
+            - /url: "#download"
+        - link "Get Started" [ref=f1e19] [cursor=pointer]:
+          - /url: "#download"
+    - generic [ref=f1e22]:
+      - generic [ref=f1e23]:
+        - generic [ref=f1e24]: Voice Expense Tracker App
+        - heading "Track Expenses by Speaking, Not Typing" [level=1] [ref=f1e26]: Track Expenses by Speaking,Not Typing
+        - paragraph [ref=f1e27]: Vocash is the voice expense tracker app for busy people who want a faster way to log daily spending. Say "Spent $12 on lunch" and keep moving.
+        - generic [ref=f1e28]:
+          - generic [ref=f1e29]:
+            - link "Download on the App Store" [ref=f1e31] [cursor=pointer]:
+              - /url: https://apps.apple.com/us/app/vocash-ai-expense-tracker/id6752502696
+              - generic [ref=f1e35]:
+                - generic [ref=f1e36]: Download on the
+                - generic [ref=f1e37]: App Store
+            - link "GET IT ON Google Play" [ref=f1e39] [cursor=pointer]:
+              - /url: https://play.google.com/store/apps/details?id=com.voocash.app
+              - generic [ref=f1e47]:
+                - generic [ref=f1e48]: GET IT ON
+                - generic [ref=f1e49]: Google Play
+          - link "See How Voice Logging Works" [ref=f1e50] [cursor=pointer]:
+            - /url: "#how-it-works"
+      - generic [ref=f1e53]: Live Demo
+      - generic [ref=f1e69]:
+        - generic [ref=f1e70]: Free to start
+        - generic [ref=f1e74]: Edit entries anytime
+        - generic [ref=f1e78]: Built for quick daily logging
+    - generic [ref=f1e83]:
+      - generic [ref=f1e84]:
+        - heading "Most people do not quit budgeting. They quit logging." [level=2] [ref=f1e85]
+        - paragraph [ref=f1e86]: Expense tracking falls apart when every transaction feels like a chore.
+      - generic [ref=f1e87]:
+        - generic [ref=f1e88]:
+          - generic [ref=f1e89]: THE OLD WAY
+          - generic [ref=f1e90]:
+            - generic [ref=f1e96]:
+              - heading "Too Many Steps" [level=3] [ref=f1e97]
+              - paragraph [ref=f1e98]: Open the app, tap around, type the amount, pick a category, save it, then do it again later.
+            - generic [ref=f1e103]:
+              - heading "\"I'll Do It Later\"" [level=3] [ref=f1e104]
+              - paragraph [ref=f1e105]: When logging feels slow, people postpone it. Once they postpone it, the record stops being useful.
+            - generic [ref=f1e111]:
+              - heading "Incomplete Budgets" [level=3] [ref=f1e112]
+              - paragraph [ref=f1e113]: Missing daily spending means less clarity, weaker habits, and a budget you stop trusting.
+          - generic [ref=f1e114]: "Result: Tracking falls apart"
+        - generic [ref=f1e119]:
+          - generic [ref=f1e120]: THE VOCASH WAY
+          - generic [ref=f1e121]:
+            - generic [ref=f1e122]:
+              - generic [ref=f1e123]: "1"
+              - generic [ref=f1e125]:
+                - heading "Say It Naturally" [level=3] [ref=f1e126]
+                - paragraph [ref=f1e127]: Speak an expense like "Spent $24 on lunch" instead of typing every detail.
+            - generic [ref=f1e140]:
+              - heading "Log It Faster" [level=3] [ref=f1e141]
+              - paragraph [ref=f1e142]: Vocash is built to reduce manual work so it is easier to capture spending right when it happens.
+            - generic [ref=f1e147]:
+              - heading "Stay Consistent" [level=3] [ref=f1e148]
+              - paragraph [ref=f1e149]: When logging feels quick, you are more likely to keep your spending records current and useful.
+          - generic [ref=f1e150]: "Result: A habit you can keep"
+    - generic [ref=f1e155]:
+      - generic [ref=f1e156]:
+        - heading "How voice expense tracking works" [level=2] [ref=f1e157]
+        - paragraph [ref=f1e158]: The point is not to impress you with features. The point is to make logging fast enough to keep using.
+      - generic [ref=f1e159]:
+        - generic [ref=f1e161]:
+          - heading "1. Speak the expense" [level=3] [ref=f1e166]
+          - paragraph [ref=f1e167]: Say what happened in plain language, like "$15 for lunch" or "Paid $45 for gas."
+        - generic [ref=f1e168]:
+          - heading "2. Capture it quickly" [level=3] [ref=f1e172]
+          - paragraph [ref=f1e173]: Vocash is designed to reduce the typing and tap-heavy steps that make manual tracking annoying.
+        - generic [ref=f1e174]:
+          - heading "3. Keep spending visible" [level=3] [ref=f1e179]
+          - paragraph [ref=f1e180]: Your record stays current, so it is easier to see where your money is going day after day.
+    - generic [ref=f1e182]:
+      - generic [ref=f1e183]:
+        - heading "The simple expense tracker app you will actually use" [level=2] [ref=f1e184]
+        - paragraph [ref=f1e185]: "Vocash is built around one outcome: faster logging with less friction, so staying consistent feels possible."
+      - generic [ref=f1e186]:
+        - generic [ref=f1e189]:
+          - generic [ref=f1e194]: Faster daily logging
+          - heading "Track expenses in seconds" [level=3] [ref=f1e195]
+          - paragraph [ref=f1e196]: Speak it instead of typing it
+          - paragraph [ref=f1e197]: Vocash shortens the path from purchase to record. That matters because faster capture makes it easier to log expenses before you forget them.
+        - generic [ref=f1e200]:
+          - generic [ref=f1e204]: Easier to stick with
+          - heading "Lower the friction" [level=3] [ref=f1e205]
+          - paragraph [ref=f1e206]: Less busywork, more follow-through
+          - paragraph [ref=f1e207]: The best expense tracker is the one you keep using. Vocash is built to reduce the manual steps that make traditional trackers feel annoying.
+        - generic [ref=f1e210]:
+          - generic [ref=f1e214]: Clearer spending view
+          - heading "See where your money goes" [level=3] [ref=f1e215]
+          - paragraph [ref=f1e216]: Keep your spending habits visible
+          - paragraph [ref=f1e217]: When your expense record stays current, it is easier to understand your spending patterns and make better budgeting decisions.
+        - generic [ref=f1e220]:
+          - generic [ref=f1e224]: Edit anytime
+          - heading "Stay in control" [level=3] [ref=f1e225]
+          - paragraph [ref=f1e226]: Review and edit as you go
+          - paragraph [ref=f1e227]: Vocash is built for real-life tracking, which means you can keep entries clean and useful instead of being locked into a rigid flow.
+      - generic [ref=f1e228]:
+        - generic [ref=f1e229]:
+          - generic [ref=f1e234]: Less guesswork
+          - heading "Simple spending summaries" [level=4] [ref=f1e235]
+          - paragraph [ref=f1e236]: A cleaner record makes it easier to spot where your money is going
+        - generic [ref=f1e237]:
+          - generic [ref=f1e241]: Built for daily use
+          - heading "Daily habit support" [level=4] [ref=f1e242]
+          - paragraph [ref=f1e243]: Designed for quick check-ins so you can keep up with expenses day after day
+        - generic [ref=f1e244]:
+          - generic [ref=f1e249]: Made for life on the go
+          - heading "Mobile-first tracking" [level=4] [ref=f1e250]
+          - paragraph [ref=f1e251]: Made for the moments when spending happens in real life, not at a desk
+      - generic [ref=f1e252]:
+        - heading "Ready to track expenses by voice?" [level=3] [ref=f1e253]
+        - paragraph [ref=f1e254]: Install Vocash and make expense tracking lighter from the first entry.
+        - generic [ref=f1e255]:
+          - link "Download on the App Store" [ref=f1e257] [cursor=pointer]:
+            - /url: https://apps.apple.com/us/app/vocash-ai-expense-tracker/id6752502696
+            - generic [ref=f1e261]:
+              - generic [ref=f1e262]: Download on the
+              - generic [ref=f1e263]: App Store
+          - link "GET IT ON Google Play" [ref=f1e265] [cursor=pointer]:
+            - /url: https://play.google.com/store/apps/details?id=com.voocash.app
+            - generic [ref=f1e273]:
+              - generic [ref=f1e274]: GET IT ON
+              - generic [ref=f1e275]: Google Play
+    - generic [ref=f1e277]:
+      - generic [ref=f1e278]:
+        - paragraph [ref=f1e279]: Why Vocash Works
+        - heading "Voice logging beats manual expense tracking" [level=2] [ref=f1e280]
+        - paragraph [ref=f1e281]: The problem is rarely motivation. The problem is friction. Vocash makes expense tracking short enough to keep doing.
+      - generic [ref=f1e282]:
+        - generic [ref=f1e283]:
+          - heading "Manual expense apps" [level=3] [ref=f1e284]
+          - paragraph [ref=f1e285]: Too many taps, too much typing, too easy to postpone.
+        - generic [ref=f1e286]:
+          - heading "Spreadsheets and notes" [level=3] [ref=f1e287]
+          - paragraph [ref=f1e288]: Easy to abandon when life gets busy and purchases pile up.
+        - generic [ref=f1e289]:
+          - heading "Vocash" [level=3] [ref=f1e290]
+          - paragraph [ref=f1e291]: Speak the expense, log it quickly, and keep your spending record current.
+      - generic [ref=f1e292]:
+        - heading "If tracking feels easier, you are more likely to stick with it" [level=3] [ref=f1e293]
+        - paragraph [ref=f1e294]: Vocash is built for quick daily logging, not more finance busywork. Speak an expense, keep moving, and stay closer to your real spending.
+        - generic [ref=f1e295]:
+          - link "Download on the App Store" [ref=f1e297] [cursor=pointer]:
+            - /url: https://apps.apple.com/us/app/vocash-ai-expense-tracker/id6752502696
+            - generic [ref=f1e301]:
+              - generic [ref=f1e302]: Download on the
+              - generic [ref=f1e303]: App Store
+          - link "GET IT ON Google Play" [ref=f1e305] [cursor=pointer]:
+            - /url: https://play.google.com/store/apps/details?id=com.voocash.app
+            - generic [ref=f1e313]:
+              - generic [ref=f1e314]: GET IT ON
+              - generic [ref=f1e315]: Google Play
+        - generic [ref=f1e316]:
+          - link "Compare Vocash with other apps" [ref=f1e317] [cursor=pointer]:
+            - /url: /compare/vocash-vs-mint
+          - link "Explore expense tracker alternatives" [ref=f1e318] [cursor=pointer]:
+            - /url: /alternatives/mint
+    - generic [ref=f1e320]:
+      - generic [ref=f1e321]:
+        - heading "Built for people who want a simpler way to track spending" [level=2] [ref=f1e322]
+        - paragraph [ref=f1e323]: The common thread is not age or income. It is wanting a faster, easier way to keep up with expenses.
+      - generic [ref=f1e324]:
+        - generic [ref=f1e325]:
+          - heading "Busy professionals" [level=3] [ref=f1e330]
+          - paragraph [ref=f1e331]: Log spending between meetings, errands, and long days without turning expense tracking into another task.
+        - generic [ref=f1e332]:
+          - heading "Freelancers" [level=3] [ref=f1e337]
+          - paragraph [ref=f1e338]: Capture business and personal expenses faster, so you are less likely to miss the small things that add up.
+        - generic [ref=f1e339]:
+          - heading "Budgeting beginners" [level=3] [ref=f1e343]
+          - paragraph [ref=f1e344]: Start with a simpler tracking habit that does not demand perfect discipline from day one.
+        - generic [ref=f1e345]:
+          - heading "People who hate manual logging" [level=3] [ref=f1e349]
+          - paragraph [ref=f1e350]: If typing every purchase into a finance app makes you quit, Vocash is the low-friction alternative.
+    - generic [ref=f1e352]:
+      - generic [ref=f1e353]:
+        - paragraph [ref=f1e354]: FAQ
+        - heading "Questions people ask before they install" [level=2] [ref=f1e355]
+        - paragraph [ref=f1e356]: "The goal is simple: make expense tracking easy enough to keep using."
+      - generic [ref=f1e357]:
+        - group [ref=f1e358]:
+          - generic "How does Vocash work?" [ref=f1e359] [cursor=pointer]
+        - group [ref=f1e360]:
+          - generic "Is Vocash a budget app or an expense tracker?" [ref=f1e361] [cursor=pointer]
+        - group [ref=f1e362]:
+          - generic "Who is Vocash for?" [ref=f1e363] [cursor=pointer]
+        - group [ref=f1e364]:
+          - generic "Can I fix an entry after I log it?" [ref=f1e365] [cursor=pointer]
+        - group [ref=f1e366]:
+          - generic "Why is voice logging better than manual tracking?" [ref=f1e367] [cursor=pointer]
+    - generic [ref=f1e373]:
+      - heading "Make expense tracking easy enough to stick with" [level=2] [ref=f1e374]: Make expense trackingeasy enough to stick with
+      - generic [ref=f1e375]: Voice expense tracker app
+      - paragraph [ref=f1e376]: If other expense trackers felt slow or annoying, Vocash was built for you. Speak an expense, log it faster, and keep your spending record current.
+      - generic [ref=f1e377]:
+        - link "Download on the App Store" [ref=f1e379] [cursor=pointer]:
+          - /url: https://apps.apple.com/us/app/vocash-ai-expense-tracker/id6752502696
+          - generic [ref=f1e383]:
+            - generic [ref=f1e384]: Download on the
+            - generic [ref=f1e385]: App Store
+        - link "GET IT ON Google Play" [ref=f1e387] [cursor=pointer]:
+          - /url: https://play.google.com/store/apps/details?id=com.voocash.app
+          - generic [ref=f1e395]:
+            - generic [ref=f1e396]: GET IT ON
+            - generic [ref=f1e397]: Google Play
+      - generic [ref=f1e398]:
+        - generic [ref=f1e399]: ✓ Free to start
+        - generic [ref=f1e401]: ✓ Edit entries anytime
+        - generic [ref=f1e403]: ✓ Available on iPhone and Android
+        - generic [ref=f1e405]: ✓ Built for quick daily logging
+    - generic [ref=f1e408]:
+      - generic [ref=f1e409]:
+        - generic [ref=f1e410]: Support Content
+        - heading "More free tools for budgeting alongside Vocash" [level=2] [ref=f1e414]: More free tools for budgetingalongside Vocash
+        - paragraph [ref=f1e415]: These calculators support the broader money-management side of the site, but the app comes first. Use them when you want help planning budgets, savings, or payoff goals.
+      - generic [ref=f1e416]:
+        - link [ref=f1e418] [cursor=pointer]:
+          - /url: /tools/50-30-20-budget-calculator
+          - heading "50/30/20 Budget" [level=3] [ref=f1e423]
+          - paragraph [ref=f1e424]: Ideal budget breakdown in seconds
+          - generic [ref=f1e425]: Try Calculator
+        - link [ref=f1e429] [cursor=pointer]:
+          - /url: /tools/compound-interest-calculator
+          - heading "Compound Interest" [level=3] [ref=f1e434]
+          - paragraph [ref=f1e435]: Watch your money grow over time
+          - generic [ref=f1e436]: Try Calculator
+        - link [ref=f1e440] [cursor=pointer]:
+          - /url: /tools/retirement-calculator
+          - heading "Retirement Calculator" [level=3] [ref=f1e446]
+          - paragraph [ref=f1e447]: Find out when you can retire
+          - generic [ref=f1e448]: Try Calculator
+        - link [ref=f1e452] [cursor=pointer]:
+          - /url: /tools/debt-payoff-calculator
+          - heading "Debt Payoff" [level=3] [ref=f1e457]
+          - paragraph [ref=f1e458]: Become debt-free faster
+          - generic [ref=f1e459]: Try Calculator
+        - link [ref=f1e463] [cursor=pointer]:
+          - /url: /tools/emergency-fund-calculator
+          - heading "Emergency Fund" [level=3] [ref=f1e467]
+          - paragraph [ref=f1e468]: Calculate your safety net
+          - generic [ref=f1e469]: Try Calculator
+        - link [ref=f1e473] [cursor=pointer]:
+          - /url: /tools/freelance-rate-calculator
+          - heading "Freelance Rate" [level=3] [ref=f1e478]
+          - paragraph [ref=f1e479]: Price your services right
+          - generic [ref=f1e480]: Try Calculator
+      - link "View All 12 Calculators" [ref=f1e484] [cursor=pointer]:
+        - /url: /tools
+    - contentinfo [ref=f1e487]:
+      - generic [ref=f1e488]:
+        - generic [ref=f1e489]:
+          - generic [ref=f1e490]:
+            - generic [ref=f1e491]: Vocash
+            - paragraph [ref=f1e497]: Voice expense tracker app for people who want faster daily logging without the usual manual-entry friction.
+          - generic [ref=f1e498]:
+            - heading "Expense Tracking" [level=3] [ref=f1e499]
+            - list [ref=f1e500]:
+              - listitem [ref=f1e501]:
+                - link "Voice Expense Tracker" [ref=f1e502] [cursor=pointer]:
+                  - /url: /voice-expense-tracker
+              - listitem [ref=f1e503]:
+                - link "Track by Voice" [ref=f1e504] [cursor=pointer]:
+                  - /url: /track-expenses-by-voice
+              - listitem [ref=f1e505]:
+                - link "Simple Expense Tracker" [ref=f1e506] [cursor=pointer]:
+                  - /url: /simple-expense-tracker-app
+              - listitem [ref=f1e507]:
+                - link "Daily Expense Tracker" [ref=f1e508] [cursor=pointer]:
+                  - /url: /daily-expense-tracker-app
+              - listitem [ref=f1e509]:
+                - link "Quick Expense Logging" [ref=f1e510] [cursor=pointer]:
+                  - /url: /app-to-log-expenses-quickly
+              - listitem [ref=f1e511]:
+                - link "Easy Expense Tracking" [ref=f1e512] [cursor=pointer]:
+                  - /url: /easiest-way-to-track-expenses
+          - generic [ref=f1e513]:
+            - heading "Budgeting" [level=3] [ref=f1e514]
+            - list [ref=f1e515]:
+              - listitem [ref=f1e516]:
+                - link "50/30/20 Rule" [ref=f1e517] [cursor=pointer]:
+                  - /url: /tools/50-30-20-budget-calculator
+              - listitem [ref=f1e518]:
+                - link "Monthly Budget" [ref=f1e519] [cursor=pointer]:
+                  - /url: /tools/monthly-budget-calculator
+              - listitem [ref=f1e520]:
+                - link "Paycheck Calc" [ref=f1e521] [cursor=pointer]:
+                  - /url: /tools/paycheck-calculator
+              - listitem [ref=f1e522]:
+                - link "Debt Payoff" [ref=f1e523] [cursor=pointer]:
+                  - /url: /tools/debt-payoff-calculator
+          - generic [ref=f1e524]:
+            - heading "Savings" [level=3] [ref=f1e525]
+            - list [ref=f1e526]:
+              - listitem [ref=f1e527]:
+                - link "Emergency Fund" [ref=f1e528] [cursor=pointer]:
+                  - /url: /tools/emergency-fund-calculator
+              - listitem [ref=f1e529]:
+                - link "Savings Goal" [ref=f1e530] [cursor=pointer]:
+                  - /url: /tools/savings-goal-calculator
+              - listitem [ref=f1e531]:
+                - link "Compound Interest" [ref=f1e532] [cursor=pointer]:
+                  - /url: /tools/compound-interest-calculator
+              - listitem [ref=f1e533]:
+                - link "Retirement Calc" [ref=f1e534] [cursor=pointer]:
+                  - /url: /tools/retirement-calculator
+          - generic [ref=f1e535]:
+            - heading "Lifestyle" [level=3] [ref=f1e536]
+            - list [ref=f1e537]:
+              - listitem [ref=f1e538]:
+                - link "Freelance Rate" [ref=f1e539] [cursor=pointer]:
+                  - /url: /tools/freelance-rate-calculator
+              - listitem [ref=f1e540]:
+                - link "Tip Calculator" [ref=f1e541] [cursor=pointer]:
+                  - /url: /tools/tip-calculator
+              - listitem [ref=f1e542]:
+                - link "Inflation Calc" [ref=f1e543] [cursor=pointer]:
+                  - /url: /tools/inflation-calculator
+              - listitem [ref=f1e544]:
+                - link "Mortgage Calc" [ref=f1e545] [cursor=pointer]:
+                  - /url: /tools/mortgage-calculator
+          - generic [ref=f1e546]:
+            - heading "Company" [level=3] [ref=f1e547]
+            - list [ref=f1e548]:
+              - listitem [ref=f1e549]:
+                - link "Blog" [ref=f1e550] [cursor=pointer]:
+                  - /url: /blog
+              - listitem [ref=f1e551]:
+                - link "Features" [ref=f1e552] [cursor=pointer]:
+                  - /url: /features
+              - listitem [ref=f1e553]:
+                - link "Privacy" [ref=f1e554] [cursor=pointer]:
+                  - /url: /privacy
+              - listitem [ref=f1e555]:
+                - link "All Calculators" [ref=f1e556] [cursor=pointer]:
+                  - /url: /tools
+        - generic [ref=f1e557]:
+          - paragraph [ref=f1e558]: © 2026 Vocash. All rights reserved.
+          - navigation "Language" [ref=f1e559]:
+            - link "English" [ref=f1e560] [cursor=pointer]:
+              - /url: /
+            - link "Español" [ref=f1e561] [cursor=pointer]:
+              - /url: /es
+            - link "Français" [ref=f1e562] [cursor=pointer]:
+              - /url: /fr
+  - alert [ref=f1e563]

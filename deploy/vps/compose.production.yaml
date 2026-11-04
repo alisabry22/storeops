@@ -1,0 +1,19 @@
+services:
+  storeops:
+    image: storeops-staging:cloud-auth
+    container_name: storeops-production-candidate
+    env_file: .env.production
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_STOREOPS_EDITION: cloud
+    ports:
+      - "127.0.0.1:13200:3000"
+    mem_limit: 2g
+    cpus: 2
+    pids_limit: 256
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

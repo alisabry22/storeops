@@ -1,0 +1,23 @@
+services:
+  storeops:
+    image: storeops-staging:cloud-auth
+    container_name: storeops-staging
+    env_file: .env.staging
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_STOREOPS_EDITION: cloud
+    ports:
+      - "127.0.0.1:13100:3000"
+    mem_limit: 1536m
+    cpus: 1.5
+    pids_limit: 256
+    restart: unless-stopped
+    networks: [isolated]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "2"
+networks:
+  isolated:
+    internal: true
