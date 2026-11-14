@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { PaywallModal } from "@/components/Paywall";
 import { RequireAccount } from "@/components/RequireAccount";
 import { SnapshotConfirmDialog } from "@/components/SnapshotConfirmDialog";
@@ -12,6 +11,10 @@ import { SnapshotPanel } from "@/components/SnapshotPanel";
 import { GooglePlayMetadataEditor } from "@/components/GooglePlayMetadataEditor";
 import { PlanPricingWorkspace } from "@/components/PlanPricingWorkspace";
 import { AppIcon } from "@/components/AppIcon";
+import { TopBar } from "@/components/TopBar";
+import { GoogleConnectCard } from "@/components/ConnectCards";
+import { PageSkeleton } from "@/components/PageSkeleton";
+import { useSigningKey } from "@/lib/use-signing-key";
 import { googlePlanPricingStore } from "@/lib/gp/plan-pricing-store";
 import { useIsPro } from "@/lib/license";
 import { useHydrated } from "@/lib/use-hydrated";
@@ -35,7 +38,6 @@ import {
   matchingApprovedRegionalPrices,
   type GoogleApprovedPricingPreview,
 } from "@/lib/gp/price-normalization";
-import { storeServiceAccount } from "@/lib/gp/auth";
 import { gpFetch, GpError } from "@/lib/gp/client";
 import { useGpStore } from "@/lib/gp/store";
 import {
@@ -117,7 +119,6 @@ export default function PlayPage() {
   const {
     gpCredentials,
     packages,
-    setGpCredentials,
     clearGpCredentials,
     addPackage,
     removePackage,
@@ -125,9 +126,9 @@ export default function PlayPage() {
 
   const hydrated = useHydrated();
   const [error, setError] = useState("");
-
-  // Connect flow
-  const [connecting, setConnecting] = useState(false);
+  // Saved Google credentials without a key on this device → reconnect form.
+  const gpKey = useSigningKey("gp-signing-key", hydrated && !!gpCredentials, gpCredentials);
+  const gpReady = !!gpCredentials && gpKey === "present";
 
   // Package + products
   const [newPackage, setNewPackage] = useState("");
@@ -246,21 +247,8 @@ export default function PlayPage() {
 
   const snapshotScope = selectedRef ? `gp:${refKey(selectedRef)}` : "";
 
-  async function connect(json: string) {
-    setConnecting(true);
-    setError("");
-    try {
-      const creds = await storeServiceAccount(json);
-      setGpCredentials(creds);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setConnecting(false);
-    }
-  }
-
   const loadProducts = useCallback(async () => {
-    if (!gpCredentials || !selectedPackage) return;
+    if (!gpCredentials || !gpReady || !selectedPackage) return;
     setLoadingProducts(true);
     setError("");
     setIaps([]);
@@ -373,15 +361,15 @@ export default function PlayPage() {
     }
 
     setError(
-      iapError && subError
+      iapError && subError && iapError !== subError
         ? `${iapError}  ·  ${subError}`
         : iapError || subError,
     );
     setLoadingProducts(false);
-  }, [gpCredentials, selectedPackage]);
+  }, [gpCredentials, gpReady, selectedPackage]);
 
   useEffect(() => {
-    if (selectedPackage) {
+    if (selectedPackage && gpReady) {
       queueMicrotask(() => {
         setImportPreview(null);
         setGoogleApprovedPreview(null);
@@ -391,7 +379,7 @@ export default function PlayPage() {
         void loadProducts();
       });
     }
-  }, [selectedPackage, loadProducts]);
+  }, [selectedPackage, gpReady, loadProducts]);
 
   function exportableRows() {
     return currentPrices
@@ -1471,51 +1459,17 @@ export default function PlayPage() {
   const changedCount =
     importPreview?.filter((r) => r.newPrice !== r.currentPrice).length ?? 0;
 
-  if (!hydrated) return null;
+  if (!hydrated || (!!gpCredentials && gpKey === "checking")) return <PageSkeleton />;
 
   return (
     <RequireAccount>
       <main id="main-content" className="max-w-5xl mx-auto w-full px-6 py-10">
-        {/* Play-specific header — Apple credentials/TopBar don't apply here */}
-        <header className="mb-8 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <Link
-              href="/"
-              className="text-sm text-zinc-400 hover:text-zinc-200 transition"
-            >
-              ← Home
-            </Link>
-            <h1 className="text-2xl font-bold tracking-tight">
-              Store<span className="text-emerald-400">Ops</span>{" "}
-              <span className="text-sm font-normal text-zinc-500">
-                · Google Play
-              </span>
-            </h1>
-          </div>
-          <div className="flex items-center gap-3">
-            <Link
-              href="/apps"
-              className="text-sm text-zinc-400 hover:text-emerald-400 transition"
-            >
-              App Store →
-            </Link>
-            <Link
-              href="/account"
-              className="text-sm text-zinc-400 hover:text-zinc-200 transition"
-            >
-              Account
-            </Link>
-            {gpCredentials && (
-              <button
-                disabled={pairedBusy || applying || anchorLoading}
-                onClick={() => clearGpCredentials()}
-                className="text-sm text-zinc-500 hover:text-zinc-200 transition"
-              >
-                Disconnect
-              </button>
-            )}
-          </div>
-        </header>
+        <TopBar
+          store="google"
+          showDisconnect={!!gpCredentials}
+          disconnectDisabled={pairedBusy || applying || anchorLoading}
+          onDisconnect={() => clearGpCredentials()}
+        />
 
         {error && (
           <p className="text-sm text-red-400 bg-red-950/40 border border-red-900 rounded-md px-3 py-2 mb-4">
@@ -1544,49 +1498,10 @@ export default function PlayPage() {
           />
         )}
 
-        {!gpCredentials ? (
-          /* ---- Connect ---- */
-          <div className="card card-hero p-6 max-w-xl">
-            <h2 className="font-semibold text-lg mb-1">Connect Google Play</h2>
-            <p className="text-sm text-zinc-400 mb-4 leading-relaxed">
-              Upload your Google service-account key to connect your Android apps. Your private key stays in this browser.
-            </p>
-            <label className="block">
-              <input
-                type="file"
-                accept=".json"
-                className="hidden"
-                id="gp-json-file"
-                disabled={connecting}
-                onChange={async (e) => {
-                  const f = e.target.files?.[0];
-                  if (f) await connect(await f.text());
-                  e.target.value = "";
-                }}
-              />
-              <button type="button"
-                className="inline-block cursor-pointer rounded-md bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-zinc-950 hover:bg-emerald-400 transition"
-                onClick={() => document.getElementById("gp-json-file")?.click()}
-                disabled={connecting}
-              >
-                {connecting ? "Importing key…" : "Choose Google key file"}
-              </button>
-            </label>
-            <details className="app-advanced mt-5"><summary>How do I create a Google key?</summary><div className="space-y-2 text-sm text-zinc-400">
-              <p>
-                1. Google Cloud Console → create/select a project → enable the{" "}
-                <strong>Google Play Android Developer API</strong>
-              </p>
-              <p>
-                2. IAM → Service Accounts → create one → Keys → Add key → JSON
-              </p>
-              <p>
-                3. Play Console → Users and permissions → invite the
-                service-account email with{" "}
-                <strong>“Manage store presence” + “Manage orders”</strong> (or
-                Admin)
-              </p>
-            </div></details>
+        {!gpReady || !gpCredentials ? (
+          /* ---- Connect (or reconnect when the key is missing) ---- */
+          <div className="max-w-xl">
+            <GoogleConnectCard title={gpCredentials ? "Reconnect Google Play" : "Connect Google Play"} reconnect={!!gpCredentials} onConnected={() => {}} />
           </div>
         ) : (
           <>

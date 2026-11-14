@@ -4,9 +4,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { useCredentials } from "@/lib/store";
 import { ascFetch, ascFetchAllFull, AscError } from "@/lib/asc/client";
+import { RetentionOfferPlanner } from "@/components/RetentionOfferPlanner";
 import { AppTabs } from "@/components/AppTabs";
 import { PaywallModal, estimateManualMinutes } from "@/components/Paywall";
 import { SnapshotPanel } from "@/components/SnapshotPanel";
+import { PageSkeleton } from "@/components/PageSkeleton";
 import { TopBar } from "@/components/TopBar";
 import { PlanPricingWorkspace } from "@/components/PlanPricingWorkspace";
 import { applePlanPricingStore } from "@/lib/asc/plan-pricing-store";
@@ -758,13 +760,14 @@ export default function SubscriptionsPage() {
 
   const selectedSub = subscriptions.find((s) => s.id === selectedSubId);
 
-  if (!hydrated || !credentials) return null;
+  if (!hydrated || !credentials) return <PageSkeleton />;
 
   return (
     <main id="main-content" className="max-w-5xl mx-auto w-full px-6 py-10">
       <TopBar backToApps />
 
       <AppTabs appId={id} active="subscriptions" />
+      {credentials && <RetentionOfferPlanner credentials={credentials} subscriptions={subscriptions} />}
 
       <h1 className="text-2xl font-semibold tracking-tight mb-1">Subscription prices</h1>
       <p className="text-sm text-zinc-400 mb-6">

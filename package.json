@@ -36,7 +36,8 @@
     "test": "vitest run",
     "launch:check": "node scripts/check-launch.mjs",
     "db:generate": "drizzle-kit generate",
-    "db:push": "drizzle-kit push"
+    "db:push": "drizzle-kit push",
+    "deploy": "bash scripts/deploy-vps.sh"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.111.0",

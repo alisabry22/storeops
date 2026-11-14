@@ -57,7 +57,7 @@ export function googlePlanPricingStore(packageName: string, credentials: GpCrede
     return { pair: pair as [GooglePlan, GooglePlan], products };
   }
   return {
-    platform: "google", name: "Google Play", referenceMode: "amount", requireMatchingGroup: false, plans,
+    platform: "google", name: "Google Play", scopeId: packageName, referenceMode: "amount", requireMatchingGroup: false, plans,
     async loadReferences(selected) {
       const { pair, products } = await read(selected);
       const references = pair.map((plan) => {

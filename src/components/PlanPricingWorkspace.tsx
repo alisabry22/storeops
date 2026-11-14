@@ -11,6 +11,8 @@ import { WorkflowSteps } from "./WorkflowSteps";
 import { PricingStrategyPicker } from "./PricingStrategyPicker";
 import { AppIcon } from "./AppIcon";
 import { territoryName } from "@/lib/territory-names";
+import { getStrategy } from "@/lib/pricing-strategies";
+import { anchorsFromRecipe, initialPair, loadPair, loadRecipe, savePair, saveRecipe, type PricingRecipe } from "@/lib/pricing-recipe";
 
 // Extend the existing subscription workspace: paired country rows are the focal
 // element; Geist/zinc/emerald, native controls, 4px rhythm, compact 14px data.
@@ -45,10 +47,23 @@ export function PlanPricingWorkspace({ store, loading, onBusyChange }: {
   const headingRef = useRef<HTMLHeadingElement>(null);
   useEffect(() => { if (step > 0) headingRef.current?.focus({ preventScroll: true }); }, [step]);
   const [selected, setSelected] = useState({ monthly: "", yearly: "" });
+  // Remembered inputs: last pair for this app, last US prices + goal across stores.
+  const [recipe, setRecipe] = useState<PricingRecipe | null>(() => loadRecipe());
+  const plansKey = store.plans.map((plan) => plan.id).join("|");
+  const [initializedFor, setInitializedFor] = useState("");
   const [points, setPoints] = useState<Record<Role, PlanReference[]>>({ monthly: [], yearly: [] });
   const [anchors, setAnchors] = useState({ monthly: "", yearly: "" });
   const [settings, setSettings] = useState<PlanPricingSettings>({ strategy: "ppp", relationship: "reference-discount", annualDiscountPercent: 40, maxChangePercent: 25 });
   const [sameBenefits, setSameBenefits] = useState(false);
+  // Pre-select the remembered (or only possible) pair once plans arrive.
+  if (!loading && plansKey && initializedFor !== plansKey) {
+    setInitializedFor(plansKey);
+    const pair = initialPair(store.plans, loadPair(store.platform, store.scopeId));
+    if (!selected.monthly && !selected.yearly) {
+      setSelected({ monthly: pair.monthly, yearly: pair.yearly });
+      setSameBenefits(pair.sameBenefits);
+    }
+  }
   const [preview, setPreview] = useState<PairedPricingPreview | null>(null);
   const [countries, setCountries] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState("");
@@ -92,32 +107,50 @@ export function PlanPricingWorkspace({ store, loading, onBusyChange }: {
     return preview?.rows.filter((row) => `${territoryName(row.territoryId)} ${row.territoryId} ${row.currency}`.toUpperCase().includes(query)) ?? [];
   }, [preview, filter]);
 
-  async function loadAnchors() {
+  async function loadAnchors(): Promise<Record<Role, PlanReference[]> | null> {
     invalidate();
+    savePair(store.platform, store.scopeId, { ...selected, sameBenefits });
     setActivity("anchors");
     try {
       setProgress("Loading your current US prices…");
       const loaded = await store.loadReferences(selected);
-      setPoints({ monthly: loaded.monthly.options, yearly: loaded.yearly.options });
+      const options = { monthly: loaded.monthly.options, yearly: loaded.yearly.options };
+      setPoints(options);
       setAnchors({ monthly: loaded.monthly.selectedId, yearly: loaded.yearly.selectedId });
       setStep(1);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+      return options;
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); return null; }
     finally { setActivity(null); }
   }
 
-  async function generate() {
+  /** US amounts behind a set of reference inputs, for the recipe memory. */
+  function usAmounts(a: Record<Role, string>, s: PlanPricingSettings, p: Record<Role, PlanReference[]>) {
+    const value = (role: Role) => Number(store.referenceMode === "amount" ? a[role] : p[role].find((point) => point.id === a[role])?.price);
+    const monthly = value("monthly");
+    if (s.relationship !== "target-discount") return { monthly, yearly: value("yearly") };
+    const target = monthly * 12 * (1 - s.annualDiscountPercent / 100);
+    if (store.referenceMode === "amount") return { monthly, yearly: target };
+    const nearest = p.yearly.reduce<PlanReference | undefined>((best, point) => !best || Math.abs(Number(point.price) - target) < Math.abs(Number(best.price) - target) ? point : best, undefined);
+    return { monthly, yearly: Number(nearest?.price) };
+  }
+
+  async function generate(a: Record<Role, string> = anchors, s: PlanPricingSettings = settings, p: Record<Role, PlanReference[]> = points) {
     invalidate();
-    if (settings.relationship === "target-discount" && (!Number.isFinite(settings.annualDiscountPercent) || settings.annualDiscountPercent <= 0 || settings.annualDiscountPercent >= 100)) {
+    if (s.relationship === "target-discount" && (!Number.isFinite(s.annualDiscountPercent) || s.annualDiscountPercent <= 0 || s.annualDiscountPercent >= 100)) {
       setError("Choose an annual discount between 1% and 99%.");
       return;
     }
     setActivity("preview");
     setProgress(`Reading both plans and ${store.name}’s localized baselines…`);
     try {
-      const next = await store.createPreview(selected, anchors, settings, setProgress);
+      const next = await store.createPreview(selected, a, s, setProgress);
       const rows = next.rows;
       if (!rows.length) throw new Error(`${store.name} returned no countries for this pair. Try reloading the USA prices.`);
       setPreview(next);
+      const amounts = usAmounts(a, s, p);
+      const remembered: PricingRecipe = { monthlyUsd: amounts.monthly, yearlyUsd: amounts.yearly, settings: { ...s }, platform: store.platform, source: store.scopeId ?? store.name, savedAt: new Date().toISOString() };
+      saveRecipe(remembered);
+      setRecipe(remembered);
       setCountries(new Set(rows.filter((row) => row.issues.length === 0).map((row) => row.territoryId)));
       setFilter("");
       setStep(2);
@@ -140,6 +173,29 @@ export function PlanPricingWorkspace({ store, loading, onBusyChange }: {
       } });
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setActivity(null); setStep(3); }
+  }
+
+  const recipeSummary = recipe ? `${money(recipe.monthlyUsd, "USD")}/mo · ${money(recipe.yearlyUsd, "USD")}/yr · ${getStrategy(recipe.settings.strategy).label} · ${recipe.settings.maxChangePercent === null ? "no change limit" : "up to " + recipe.settings.maxChangePercent + "% change"}` : "";
+  const recipeOrigin = recipe ? (recipe.platform === store.platform && recipe.source === (store.scopeId ?? store.name) ? "Last used for this app" : `Last used on ${recipe.platform === "apple" ? "App Store" : "Google Play"} · ${recipe.source}`) : "";
+
+  /** Fill step 2 from the remembered recipe; returns the inputs it used. */
+  function fillFromRecipe(p: Record<Role, PlanReference[]> = points) {
+    if (!recipe) return null;
+    const a = anchorsFromRecipe(recipe, store.referenceMode, p);
+    if (!a) { setError(`Couldn’t match your last US prices to ${store.name} price points. Choose them below.`); return null; }
+    invalidate();
+    setAnchors(a);
+    setSettings({ ...recipe.settings });
+    return a;
+  }
+
+  /** One click from plan choice to a reviewed-before-apply preview. */
+  async function previewWithRecipe() {
+    if (!recipe) return;
+    const loaded = step === 0 ? await loadAnchors() : points;
+    if (!loaded) return;
+    const a = fillFromRecipe(loaded);
+    if (a) await generate(a, { ...recipe.settings }, loaded);
   }
 
   function exportPreview() {
@@ -220,12 +276,29 @@ export function PlanPricingWorkspace({ store, loading, onBusyChange }: {
           onChange={(event) => { invalidate(); setSameBenefits(event.target.checked); }} />
         Same features, different billing periods.
       </label>}
-      <button type="button" className={primary} disabled={!bothSelected || !!groupMismatch || !sameBenefits || busy !== null}
-        onClick={loadAnchors}>Continue to prices <AppIcon name="arrow" className="ml-2 inline size-4" /></button>
+      {recipe && bothSelected && !groupMismatch && sameBenefits ? <div className="space-y-3 rounded-xl border border-emerald-900/70 bg-emerald-950/20 p-4">
+        <div><p className="text-xs text-emerald-300/80">{recipeOrigin}</p>
+          <p className="mt-1 font-mono text-sm text-zinc-100">{recipeSummary}</p></div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className={primary} disabled={busy !== null} onClick={() => void previewWithRecipe()}>
+            Preview with these prices <AppIcon name="arrow" className="ml-2 inline size-4" /></button>
+          <button type="button" className={secondary} disabled={busy !== null} onClick={() => void loadAnchors()}>Choose different prices</button>
+        </div>
+        <p className="text-xs text-zinc-400">Only builds a preview. Nothing changes in {store.name} until you review and confirm.</p>
+      </div> : <button type="button" className={primary} disabled={!bothSelected || !!groupMismatch || !sameBenefits || busy !== null}
+        onClick={() => void loadAnchors()}>Continue to prices <AppIcon name="arrow" className="ml-2 inline size-4" /></button>}
     </fieldset>}
 
     {step === 1 && <fieldset disabled={busy !== null} className="min-w-0 space-y-6">
       <legend className="sr-only">Set reference prices and a pricing goal</legend>
+      {recipe && <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-700 bg-zinc-900/40 px-4 py-3">
+        <div className="min-w-0"><p className="text-xs text-zinc-400">{recipeOrigin}</p>
+          <p className="mt-0.5 font-mono text-sm text-zinc-200">{recipeSummary}</p></div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className={secondary} onClick={() => fillFromRecipe()}>Fill in</button>
+          <button type="button" className={primary} onClick={() => void previewWithRecipe()}>Use &amp; preview</button>
+        </div>
+      </div>}
       <div className="grid gap-4 sm:grid-cols-2">{roles.map((role) =>
         <label key={role} className="min-w-0 rounded-xl border border-zinc-700 bg-zinc-900/40 p-5">
           <span className="mb-3 flex items-center gap-2 text-sm text-zinc-300">
@@ -275,7 +348,7 @@ export function PlanPricingWorkspace({ store, loading, onBusyChange }: {
         <p className="mt-3 text-xs text-zinc-400">{store.name}’s available prices and your change limit can affect the final discount. Your preview shows the actual savings.</p>
       </details>
       <div className="flex flex-wrap items-center gap-4">
-        <button type="button" className={primary} disabled={busy !== null} onClick={generate}>Preview both plans worldwide <AppIcon name="arrow" className="ml-2 inline size-4" /></button>
+        <button type="button" className={primary} disabled={busy !== null} onClick={() => generate()}>Preview both plans worldwide <AppIcon name="arrow" className="ml-2 inline size-4" /></button>
         <span className="flex items-center gap-2 text-xs text-zinc-400"><AppIcon name="shield" className="size-4" />
           {settings.maxChangePercent === null ? "Full target selected" : "Existing prices protected by a " + settings.maxChangePercent + "% limit"}
         </span>
@@ -371,7 +444,11 @@ export function PlanPricingWorkspace({ store, loading, onBusyChange }: {
         </div>
       </div>)}
       <p className="text-sm text-zinc-400">Saved backups are under “Price backups” in each plan’s individual view.</p>
-      <button type="button" className={secondary} onClick={() => { invalidate(); setStep(1); }}>Create a new preview</button>
+      <div className="flex flex-wrap gap-2">
+        {results.some((result) => result.status === "verified") && <a href={store.platform === "apple" ? "/play" : "/apps"} className={primary + " inline-flex items-center"}>
+          Price {store.platform === "apple" ? "Google Play" : "App Store"} the same way <AppIcon name="arrow" className="ml-2 inline size-4" /></a>}
+        <button type="button" className={secondary} onClick={() => { invalidate(); setStep(1); }}>Create a new preview</button>
+      </div>
     </div>}
     <PaywallModal open={paywall} onClose={() => setPaywall(false)} pending={{ count: writes.length, unit: "subscription price changes", manualMinutes: Math.max(5, writes.length) }} />
   </section>;

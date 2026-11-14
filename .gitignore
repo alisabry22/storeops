@@ -49,3 +49,9 @@ yarn-error.log*
 next-env.d.ts
 storeops11-50b7951cb29a.json
 storeops11-50b7951cb29a.json
+
+# Large media is served by nginx from /srv/storeops-production/media on the VPS,
+# not shipped in the repo or Docker image.
+public/*.mp4
+public/*.mov
+public/*.webm

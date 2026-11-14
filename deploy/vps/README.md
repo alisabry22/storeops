@@ -130,28 +130,43 @@ Original Cloudflare website records for rollback (DNS only, TTL Auto):
 Preserve all Clerk, checkout, mail, verification and other DNS records.
 Keep the Vercel project and configuration available for rollback.
 
-### Future deployments
+### Deployments
 
-Build from a reviewed source checkout, with a unique image tag. Extract only
-`NEXT_PUBLIC_` values into a private temporary build-config file; never pass
-private keys as build arguments or copy runtime env files into the image.
-Use the Dockerfile's `storeops_public_env` BuildKit mount, Cloud edition, and
-`NEXT_PUBLIC_SITE_URL=https://www.storeops.dev`. Keep the prior image tag.
-
-On the VPS, update the production Compose image to the new tag and run:
+From a clean checkout on your Mac, after pushing the commit to GitHub:
 
 ```sh
-cd /srv/storeops-production
-docker compose -p storeops-production config --quiet
-docker compose -p storeops-production up -d
-curl --fail --resolve www.storeops.dev:443:127.0.0.1 https://www.storeops.dev/
+npm run deploy                     # deploy the checked-out commit
+npm run deploy -- --ref <commit>   # deploy another pushed commit
+npm run deploy -- --status         # running image, recent deploys, health checks
+npm run deploy -- --rollback       # restore the previous image
 ```
 
-Verify authenticated account access and both stores' authorization gates.
-If a check fails, restore the previous image tag and run the same Compose
-command. Do not remove old images until acceptance. A single-container update
-can briefly interrupt requests. This is a manual deployment runbook; no CI
-workflow or automatic deployment trigger has been installed.
+`scripts/deploy-vps.sh` refuses uncommitted or unpushed work, runs typecheck,
+lint and tests, then uploads and runs `deploy/vps/remote-deploy.sh` over SSH
+(`STOREOPS_DEPLOY_HOST`, default `contabo-gateway`). On the VPS it:
+
+1. Fetches the commit into the dedicated checkout `/srv/storeops-production/repo`
+   (only changed files transfer) and cleans it.
+2. Builds `storeops-production:<short-sha>` with Cloud edition, the canonical
+   site URL, and only `NEXT_PUBLIC_` values from `.env.production` through the
+   `storeops_public_env` BuildKit mount. Private keys never enter the image.
+   A failed build leaves production untouched (log: `build-<sha>.log`).
+3. Saves `compose.yaml.prev`, switches the image, and health-checks: pages 200,
+   anonymous account 401, Apple and Google write gates 403, bad webhook
+   signature 401, demo video 206.
+4. Restores the previous image automatically if any check fails, and appends
+   every outcome to `deployments.log`. The newest three release images are
+   kept, plus the running and rollback images.
+
+A single-container switch briefly interrupts requests. No CI trigger exists;
+deploys are always run by hand.
+
+### Large media
+
+The landing-page demo video is not in the repo or the image. Nginx serves
+`/storeops-demo-web.mp4` from `/srv/storeops-production/media/` (see
+`nginx.production.conf`). To replace it, copy the new file there; for local
+development keep a copy in `public/` (ignored by git).
 
 ## Cutover accepted — November 2, 2026
 
