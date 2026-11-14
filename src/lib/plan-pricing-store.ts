@@ -30,6 +30,8 @@ export interface PairedPricingPreview {
 export interface PlanPricingStore {
   platform: "apple" | "google";
   name: string;
+  /** App ID / package name — scopes remembered plan choices. */
+  scopeId?: string;
   plans: PricingPlan[];
   referenceMode: "tier" | "amount";
   requireMatchingGroup: boolean;

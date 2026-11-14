@@ -6,6 +6,7 @@ import { useCredentials } from "@/lib/store";
 import { ascFetch, ascFetchAll } from "@/lib/asc/client";
 import { AppTabs } from "@/components/AppTabs";
 import { PaywallModal, estimateManualMinutes } from "@/components/Paywall";
+import { PageSkeleton } from "@/components/PageSkeleton";
 import { TopBar } from "@/components/TopBar";
 import { useIsPro } from "@/lib/license";
 import { useHydrated } from "@/lib/use-hydrated";
@@ -202,7 +203,7 @@ export default function MetadataEditorPage() {
 
   const fieldDef = VERSION_FIELDS.find((f) => f.key === activeField)!;
 
-  if (!hydrated || !credentials) return null;
+  if (!hydrated || !credentials) return <PageSkeleton />;
 
   return (
     <main id="main-content" className="max-w-5xl mx-auto w-full px-6 py-10">

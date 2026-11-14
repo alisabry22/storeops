@@ -11,7 +11,7 @@ export function applePlanPricingStore(appId: string, credentials: AscCredentials
     return period ? [{ id: sub.id, name: sub.attributes.name, productId: sub.attributes.productId, period, groupId: groupIds[sub.id] }] : [];
   });
   return {
-    platform: "apple", name: "Apple", referenceMode: "tier", requireMatchingGroup: true,
+    platform: "apple", name: "Apple", scopeId: appId, referenceMode: "tier", requireMatchingGroup: true,
     plans: plans as PlanPricingStore["plans"],
     async loadReferences(selected) {
       const loaded = await Promise.all((["monthly", "yearly"] as const).map(async (role) => {
