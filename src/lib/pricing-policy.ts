@@ -6,10 +6,28 @@ import type { PricingStrategy } from "./pricing-strategies";
  * the anchor; this policy only makes a bounded, reviewable adjustment before
  * the result is snapped to an official store price point.
  */
+export type MarketTier = "tier1_gulf" | "tier1" | "tier2" | "tier3";
+
+export interface TierMultipliers {
+  /** Tier 1 + Gulf (US, UK, CA, AU, EU, SA, AE, KW, QA, BH, OM). Default 1.0 (100%). */
+  tier1: number;
+  /** Tier 2 (TR, BR, MX, PL, MY, etc.). Default 0.625 (62.5%, e.g. $39.99 -> $24.99). */
+  tier2: number;
+  /** Tier 3 PPP (EG, IN, ID, PK, NG, etc.). Default 0.45 (45%, e.g. $39.99 -> $17.99). */
+  tier3: number;
+}
+
+export const DEFAULT_TIER_MULTIPLIERS: TierMultipliers = {
+  tier1: 1,
+  tier2: 0.625,
+  tier3: 0.45,
+};
+
 export interface ControlledPricingPolicy {
   strategy: PricingStrategy;
   /** Largest allowed movement from the current localized price. */
   maxChangePercent: number;
+  tierMultipliers?: TierMultipliers;
 }
 
 export interface MovementCapViolation {
@@ -38,6 +56,15 @@ const MID_MARKETS_ISO2 = new Set([
   "AL", "AM", "AZ", "BA", "BY", "BG", "CL", "CN", "CR", "CY", "CZ", "DO", "GE", "GR", "GT", "HR", "HU", "IQ", "JM", "JO", "KZ", "LB", "MX", "MK", "ME", "MN", "MY", "NA", "PA", "PL", "RO", "RU", "RS", "SK", "TH", "TW", "UY",
 ]);
 
+// High-WTP Gulf markets stay in Tier 1 alongside US/UK/EU/CA/AU.
+const GULF_MARKETS = new Set(["SAU", "ARE", "KWT", "QAT", "BHR", "OMN"]);
+const GULF_MARKETS_ISO2 = new Set(["SA", "AE", "KW", "QA", "BH", "OM"]);
+
+// Large consumer markets placed in Tier 2 (~62.5%) for the 3-Tier PPP profile
+// while keeping the legacy "ppp" band sets unchanged for backward compatibility.
+const TIER2_PROMOTED = new Set(["TUR", "BRA"]);
+const TIER2_PROMOTED_ISO2 = new Set(["TR", "BR"]);
+
 function bandFor(territory: string): "value" | "mid" | "standard" {
   if (VALUE_MARKETS_ISO2.has(territory)) return "value";
   if (MID_MARKETS_ISO2.has(territory)) return "mid";
@@ -46,7 +73,49 @@ function bandFor(territory: string): "value" | "mid" | "standard" {
   return "standard";
 }
 
-export function pricingPolicyMultiplier(strategy: PricingStrategy, territory: string): number {
+export function marketTierFor(territory: string): MarketTier {
+  const code = territory.trim().toUpperCase();
+  if (GULF_MARKETS_ISO2.has(code) || GULF_MARKETS.has(code)) return "tier1_gulf";
+  if (TIER2_PROMOTED_ISO2.has(code) || TIER2_PROMOTED.has(code)) return "tier2";
+  const band = bandFor(code);
+  if (band === "value") return "tier3";
+  if (band === "mid") return "tier2";
+  return "tier1";
+}
+
+export function marketTierLabel(tier: MarketTier): string {
+  switch (tier) {
+    case "tier1_gulf":
+      return "Tier 1 · Gulf";
+    case "tier1":
+      return "Tier 1";
+    case "tier2":
+      return "Tier 2";
+    case "tier3":
+      return "Tier 3 PPP";
+  }
+}
+
+function clampTierMultiplier(value: number | undefined, fallback: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.max(0.2, Math.min(1.5, value));
+}
+
+export function pricingPolicyMultiplier(
+  strategy: PricingStrategy,
+  territory: string,
+  tierMultipliers?: Partial<TierMultipliers>,
+): number {
+  if (strategy === "tiered") {
+    const tier = marketTierFor(territory);
+    if (tier === "tier1" || tier === "tier1_gulf") {
+      return clampTierMultiplier(tierMultipliers?.tier1, DEFAULT_TIER_MULTIPLIERS.tier1);
+    }
+    if (tier === "tier2") {
+      return clampTierMultiplier(tierMultipliers?.tier2, DEFAULT_TIER_MULTIPLIERS.tier2);
+    }
+    return clampTierMultiplier(tierMultipliers?.tier3, DEFAULT_TIER_MULTIPLIERS.tier3);
+  }
   const band = bandFor(territory);
   switch (strategy) {
     case "ppp":
@@ -136,7 +205,7 @@ export function generateControlledPriceCsv(
     const [territory = "", currency = "", priceText = ""] = raw.split(",").map((v) => v.trim());
     const current = Number(priceText);
     if (!/^[A-Z]{2,3}$/.test(territory) || !currency || !Number.isFinite(current) || current <= 0) continue;
-    const rawMultiplier = pricingPolicyMultiplier(policy.strategy, territory);
+    const rawMultiplier = pricingPolicyMultiplier(policy.strategy, territory, policy.tierMultipliers);
     const multiplier = Math.max(1 - limit, Math.min(1 + limit, rawMultiplier));
     // Keep enough precision for the store's later valid-price-point snapping.
     const target = Math.round(current * multiplier * 10_000) / 10_000;

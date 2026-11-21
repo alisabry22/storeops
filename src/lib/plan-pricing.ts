@@ -1,5 +1,5 @@
 import { snapToPricePoint } from "./pricing-import";
-import { pricingPolicyMultiplier } from "./pricing-policy";
+import { pricingPolicyMultiplier, type TierMultipliers } from "./pricing-policy";
 import type { PricingStrategy } from "./pricing-strategies";
 import type { SubPriceRow, SubscriptionPricePoint } from "./asc/types";
 
@@ -11,6 +11,8 @@ export interface PlanPricingSettings {
   annualDiscountPercent: number;
   /** null explicitly opts into the full target instead of a staged movement. */
   maxChangePercent: number | null;
+  /** Optional overrides when strategy is "tiered" (3-Tier PPP). */
+  tierMultipliers?: TierMultipliers;
 }
 
 export interface PlanPricingSource {
@@ -101,7 +103,7 @@ export function buildPlanPricingPreview(monthly: PlanPricingSource, yearly: Plan
     if (!m || !y) issues.push("One plan has no localized baseline. This country cannot be applied as a pair.");
     if (!currency || (m?.currency && y?.currency && m.currency !== y.currency)) issues.push("The plans' currencies could not be matched.");
     // The reference price is a deliberate user choice, not another regional adjustment.
-    const multiplier = territoryId === "USA" ? 1 : pricingPolicyMultiplier(settings.strategy, territoryId);
+    const multiplier = territoryId === "USA" ? 1 : pricingPolicyMultiplier(settings.strategy, territoryId, settings.tierMultipliers);
     const monthlyTarget = m ? Number(m.point.attributes.customerPrice) * multiplier : 0;
     const monthlyCell = m ? resolveCell(monthly, territoryId, monthlyTarget, settings.maxChangePercent) : null;
     const yearlyTarget = settings.relationship === "independent"

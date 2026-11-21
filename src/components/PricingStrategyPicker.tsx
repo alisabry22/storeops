@@ -4,7 +4,7 @@ import { useId } from "react";
 import { STRATEGIES, type PricingStrategy } from "@/lib/pricing-strategies";
 import { AppIcon, type AppIconName } from "./AppIcon";
 
-const icons: Record<PricingStrategy, AppIconName> = { ppp: "globe", growth: "growth", revenue: "revenue", retention: "retention", enterprise: "enterprise" };
+const icons: Record<PricingStrategy, AppIconName> = { tiered: "plans", ppp: "globe", growth: "growth", revenue: "revenue", retention: "retention", enterprise: "enterprise" };
 
 export function PricingStrategyPicker({ value, onChange, disabled = false }: { value: PricingStrategy; onChange: (value: PricingStrategy) => void; disabled?: boolean }) {
   const name = useId();

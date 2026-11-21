@@ -1,5 +1,5 @@
 /** Bounded, deterministic policy profiles used by pricing-policy.ts. */
-export type PricingStrategy = "ppp" | "growth" | "revenue" | "retention" | "enterprise";
+export type PricingStrategy = "tiered" | "ppp" | "growth" | "revenue" | "retention" | "enterprise";
 
 export interface Strategy {
   key: PricingStrategy;
@@ -10,6 +10,7 @@ export interface Strategy {
 }
 
 export const STRATEGIES: Strategy[] = [
+  { key: "tiered", label: "3-Tier PPP", tagline: "100% in Tier 1 & Gulf · ~63% in Tier 2 · ~45% in Tier 3", emoji: "🎯", star: true },
   { key: "ppp", label: "Market access", tagline: "Lower prices in price-sensitive markets", emoji: "⚖️" },
   { key: "growth", label: "Growth", tagline: "Lower prices across all markets", emoji: "🚀" },
   { key: "revenue", label: "Revenue", tagline: "Higher in standard markets, lower in value markets", emoji: "💰" },

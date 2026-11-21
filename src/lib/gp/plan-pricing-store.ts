@@ -116,7 +116,7 @@ export function googlePlanPricingStore(packageName: string, credentials: GpCrede
           const baseline = Number(moneyToDecimal(baselines[index].get(row.territoryId)!));
           const target = role === "yearly" && settings.relationship !== "independent"
             ? Number(row.monthly!.price) * ratio
-            : baseline * (row.territoryId === "US" ? 1 : pricingPolicyMultiplier(settings.strategy, row.territoryId));
+            : baseline * (row.territoryId === "US" ? 1 : pricingPolicyMultiplier(settings.strategy, row.territoryId, settings.tierMultipliers));
           targets.set(row.territoryId, target);
           const current = Number(moneyToDecimal(configs[index].get(row.territoryId)!.price!));
           staged.set(row.territoryId, cap === null ? target : stagePriceTowardTarget(current, target, cap));

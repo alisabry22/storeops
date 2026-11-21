@@ -10,7 +10,7 @@ import {
   isDevelopmentSubscriptionBypass,
 } from "@/lib/edition";
 
-const ALLOWED_STRATEGIES = new Set<PricingStrategy>(["ppp", "growth", "revenue", "retention", "enterprise"]);
+const ALLOWED_STRATEGIES = new Set<PricingStrategy>(["tiered", "ppp", "growth", "revenue", "retention", "enterprise"]);
 /**
  * AI may help a developer configure a bounded policy, but it never returns
  * production territory prices. Actual price calculation stays deterministic.

@@ -12,6 +12,7 @@ import { PricingStrategyPicker } from "./PricingStrategyPicker";
 import { AppIcon } from "./AppIcon";
 import { territoryName } from "@/lib/territory-names";
 import { getStrategy } from "@/lib/pricing-strategies";
+import { DEFAULT_TIER_MULTIPLIERS, marketTierFor, marketTierLabel, type MarketTier } from "@/lib/pricing-policy";
 import { anchorsFromRecipe, initialPair, loadPair, loadRecipe, savePair, saveRecipe, type PricingRecipe } from "@/lib/pricing-recipe";
 
 // Extend the existing subscription workspace: paired country rows are the focal
@@ -67,6 +68,7 @@ export function PlanPricingWorkspace({ store, loading, onBusyChange }: {
   const [preview, setPreview] = useState<PairedPricingPreview | null>(null);
   const [countries, setCountries] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState("");
+  const [tierFilter, setTierFilter] = useState<"all" | "tier1" | "tier2" | "tier3">("all");
   const [busy, setBusy] = useState<"anchors" | "preview" | "apply" | null>(null);
   const [progress, setProgress] = useState("");
   const [error, setError] = useState("");
@@ -104,8 +106,16 @@ export function PlanPricingWorkspace({ store, loading, onBusyChange }: {
   const finished = results.length > 0;
   const visible = useMemo(() => {
     const query = filter.trim().toUpperCase();
-    return preview?.rows.filter((row) => `${territoryName(row.territoryId)} ${row.territoryId} ${row.currency}`.toUpperCase().includes(query)) ?? [];
-  }, [preview, filter]);
+    return preview?.rows.filter((row) => {
+      if (tierFilter !== "all") {
+        const tier = marketTierFor(row.territoryId);
+        if (tierFilter === "tier1" && tier !== "tier1" && tier !== "tier1_gulf") return false;
+        if (tierFilter === "tier2" && tier !== "tier2") return false;
+        if (tierFilter === "tier3" && tier !== "tier3") return false;
+      }
+      return `${territoryName(row.territoryId)} ${row.territoryId} ${row.currency} ${marketTierLabel(marketTierFor(row.territoryId))}`.toUpperCase().includes(query);
+    }) ?? [];
+  }, [preview, filter, tierFilter]);
 
   async function loadAnchors(): Promise<Record<Role, PlanReference[]> | null> {
     invalidate();
@@ -200,7 +210,7 @@ export function PlanPricingWorkspace({ store, loading, onBusyChange }: {
 
   function exportPreview() {
     if (!preview) return;
-    const csv = ["territory,currency,selected,monthly_current,monthly_proposed,yearly_current,yearly_proposed,yearly_monthly_equivalent,annual_savings_percent", ...preview.rows.map((row) => [row.territoryId, row.currency, countries.has(row.territoryId), row.monthly?.currentPrice ?? "", row.monthly?.price ?? "", row.yearly?.currentPrice ?? "", row.yearly?.price ?? "", row.yearly ? (Number(row.yearly.price) / 12).toFixed(4) : "", row.savingsPercent?.toFixed(2) ?? ""].join(","))].join("\n");
+    const csv = ["territory,market_tier,currency,selected,monthly_current,monthly_proposed,yearly_current,yearly_proposed,yearly_monthly_equivalent,annual_savings_percent", ...preview.rows.map((row) => [row.territoryId, marketTierLabel(marketTierFor(row.territoryId)), row.currency, countries.has(row.territoryId), row.monthly?.currentPrice ?? "", row.monthly?.price ?? "", row.yearly?.currentPrice ?? "", row.yearly?.price ?? "", row.yearly ? (Number(row.yearly.price) / 12).toFixed(4) : "", row.savingsPercent?.toFixed(2) ?? ""].join(","))].join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
     const link = document.createElement("a"); link.href = url; link.download = "monthly-yearly-pricing-preview.csv"; link.click(); URL.revokeObjectURL(url);
   }
@@ -216,7 +226,17 @@ export function PlanPricingWorkspace({ store, loading, onBusyChange }: {
     setAcknowledged(false);
   }
 
+  function tierBadgeClass(tier: MarketTier): string {
+    switch (tier) {
+      case "tier1_gulf": return "border-emerald-700/70 bg-emerald-950/40 text-emerald-300";
+      case "tier1": return "border-zinc-700 bg-zinc-900 text-zinc-300";
+      case "tier2": return "border-sky-800/70 bg-sky-950/30 text-sky-300";
+      case "tier3": return "border-amber-800/70 bg-amber-950/30 text-amber-200";
+    }
+  }
+
   function countryCheckbox(row: PlanPricingRow) {
+    const tier = marketTierFor(row.territoryId);
     return <label className="flex min-h-11 items-center gap-3">
       <input type="checkbox" className="size-4 shrink-0 accent-emerald-500"
         aria-label={"Include " + territoryName(row.territoryId)}
@@ -224,7 +244,10 @@ export function PlanPricingWorkspace({ store, loading, onBusyChange }: {
         disabled={busy !== null || finished || row.issues.length > 0}
         onChange={(event) => toggleCountry(row.territoryId, event.target.checked)} />
       <span><span className="block font-medium text-zinc-100">{territoryName(row.territoryId)}</span>
-        <span className="block text-xs text-zinc-400">{row.currency} · {row.territoryId}</span></span>
+        <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-zinc-400">
+          <span>{row.currency} · {row.territoryId}</span>
+          <span className={`rounded border px-1.5 py-0.5 text-[10px] font-medium ${tierBadgeClass(tier)}`}>{marketTierLabel(tier)}</span>
+        </span></span>
     </label>;
   }
 
@@ -321,6 +344,60 @@ export function PlanPricingWorkspace({ store, loading, onBusyChange }: {
         </span><span className="text-xs text-zinc-400">Compared with 12 monthly payments</span>
       </div>
       <PricingStrategyPicker value={settings.strategy} onChange={(strategy) => updateSettings({ strategy })} />
+      {settings.strategy === "tiered" && (() => {
+        const tiers = settings.tierMultipliers ?? DEFAULT_TIER_MULTIPLIERS;
+        const yearlyAnchorUsd = settings.relationship === "target-discount" ? calculatedYearly : referenceYearly;
+        const setTierPct = (key: "tier1" | "tier2" | "tier3", pct: number) => {
+          const clamped = Math.max(20, Math.min(150, Number.isFinite(pct) ? pct : 100));
+          updateSettings({ tierMultipliers: { ...tiers, [key]: Math.round(clamped) / 100 } });
+        };
+        const tierRows = [
+          { key: "tier1" as const, title: "Tier 1 + Gulf", markets: "US, UK, CA, AU, EU, SA, AE, KW, QA", pct: Math.round(tiers.tier1 * 100) },
+          { key: "tier2" as const, title: "Tier 2", markets: "TR, BR, MX, PL, MY & mid markets", pct: Math.round(tiers.tier2 * 100) },
+          { key: "tier3" as const, title: "Tier 3 (PPP)", markets: "EG, IN, ID, PK, NG & value markets", pct: Math.round(tiers.tier3 * 100) },
+        ];
+        return <div className="space-y-3 rounded-xl border border-emerald-900/60 bg-emerald-950/15 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-medium text-zinc-100">3-Tier PPP market targets</p>
+              <p className="text-xs text-zinc-400">Calculated from your US anchors, then snapped to official {store.name} tiers.</p>
+            </div>
+            {settings.maxChangePercent !== null && (
+              <button type="button" className={secondary + " text-xs"} onClick={() => updateSettings({ maxChangePercent: null })}>
+                Remove {settings.maxChangePercent}% cap for full target
+              </button>
+            )}
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {tierRows.map((item) => {
+              const estMonthly = Number.isFinite(referenceMonthly) && referenceMonthly > 0 ? referenceMonthly * (item.pct / 100) : null;
+              const estYearly = Number.isFinite(yearlyAnchorUsd) && yearlyAnchorUsd > 0 ? yearlyAnchorUsd * (item.pct / 100) : null;
+              return <div key={item.key} className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-zinc-100">{item.title}</span>
+                  <label className="flex items-center gap-1 text-xs text-zinc-300">
+                    <span className="sr-only">{item.title} percentage of US anchor</span>
+                    <input
+                      type="number"
+                      min={20}
+                      max={150}
+                      step={1}
+                      value={item.pct}
+                      onChange={(event) => setTierPct(item.key, Number(event.target.value))}
+                      className="w-16 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-right font-mono text-xs text-zinc-100"
+                    />
+                    <span>%</span>
+                  </label>
+                </div>
+                <p className="mt-1 text-[11px] text-zinc-400">{item.markets}</p>
+                <p className="mt-2 font-mono text-xs text-emerald-300">
+                  {estMonthly !== null ? `~${money(estMonthly, "USD")}/mo` : "—"} · {estYearly !== null ? `~${money(estYearly, "USD")}/yr` : "—"}
+                </p>
+              </div>;
+            })}
+          </div>
+        </div>;
+      })()}
       <details className="app-advanced">
         <summary>Discount &amp; price protection</summary>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -369,9 +446,30 @@ export function PlanPricingWorkspace({ store, loading, onBusyChange }: {
             onChange={(event) => { setCountries(new Set(event.target.checked ? eligible.map((row) => row.territoryId) : [])); setConfirm(false); setAcknowledged(false); }} />
           All available countries
         </label>
-        <label className="min-w-0 text-sm"><span className="sr-only">Search countries or currencies</span>
-          <input className={control} placeholder="Search countries…" value={filter} onChange={(event) => setFilter(event.target.value)} />
-        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          {([
+            { id: "all", label: "All tiers" },
+            { id: "tier1", label: "Tier 1 + Gulf" },
+            { id: "tier2", label: "Tier 2" },
+            { id: "tier3", label: "Tier 3 PPP" },
+          ] as const).map((chip) => (
+            <button
+              key={chip.id}
+              type="button"
+              onClick={() => setTierFilter(chip.id)}
+              className={`rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                tierFilter === chip.id
+                  ? "border-emerald-600 bg-emerald-950/40 text-emerald-200"
+                  : "border-zinc-700 bg-zinc-900/60 text-zinc-300 hover:border-zinc-500"
+              }`}
+            >
+              {chip.label}
+            </button>
+          ))}
+          <label className="min-w-0 text-sm"><span className="sr-only">Search countries or currencies</span>
+            <input className={control} placeholder="Search countries…" value={filter} onChange={(event) => setFilter(event.target.value)} />
+          </label>
+        </div>
       </div>
       {store.platform === "google" && <p className="text-xs text-zinc-400">Configured countries only. Your store availability stays the same.</p>}
       {chosen.some((row) => row.monthly?.staged || row.yearly?.staged) &&

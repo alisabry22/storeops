@@ -84,4 +84,19 @@ describe("linked monthly and yearly pricing", () => {
     expect(() => buildPlanPricingPreview(monthly, yearly, { ...full, annualDiscountPercent: 0 })).not.toThrow();
     expect(() => buildPlanPricingPreview(monthly, yearly, { ...full, relationship: "target-discount", annualDiscountPercent: 0 })).toThrow("Choose an annual discount");
   });
+
+  it("supports 3-Tier PPP with Tier 3 at 45% and custom tier multipliers", () => {
+    const monthly = source("m", 6.99, 100, [40, 45, 70, 100]);
+    const yearly = source("y", 39.99, 600, [240, 270, 420, 600]);
+    const rows = buildPlanPricingPreview(monthly, yearly, { ...full, strategy: "tiered" });
+    expect(rows.find((row) => row.territoryId === "EGY")?.monthly?.price).toBe("45");
+    expect(rows.find((row) => row.territoryId === "EGY")?.yearly?.price).toBe("270");
+
+    const custom = buildPlanPricingPreview(monthly, yearly, {
+      ...full,
+      strategy: "tiered",
+      tierMultipliers: { tier1: 1, tier2: 0.625, tier3: 0.4 },
+    });
+    expect(custom.find((row) => row.territoryId === "EGY")?.monthly?.price).toBe("40");
+  });
 });
